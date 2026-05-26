@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>童话镇 · Fairy Tale Town</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #1a1a2e;
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh;
+    font-family: "Microsoft YaHei", "苹方", sans-serif;
+    color: #eee;
+  }
+
+  .container { text-align: center; }
+
+  h1 {
+    font-size: 24px; margin-bottom: 10px;
+    letter-spacing: 4px; font-weight: 400;
+  }
+
+  .map-wrapper {
+    position: relative;
+    width: 800px; height: 600px;
+    border: 2px solid #444;
+    border-radius: 8px;
+    overflow: hidden;
+    background: linear-gradient(135deg, #2d5a27 0%, #1a3a16 40%, #3a6b2e 100%);
+  }
+
+  /* 装饰：草地纹理 */
+  .map-wrapper::before {
+    content: "";
+    position: absolute; inset: 0;
+    background: radial-gradient(circle at 20% 80%, #4a7a3a22 0%, transparent 50%),
+                radial-gradient(circle at 70% 30%, #3a6a2a22 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, #5a8a4a18 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  /* 角色 */
+  .agent {
+    position: absolute;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: left 2.5s linear, top 2.5s linear;
+    box-shadow: 0 0 12px rgba(0,0,0,0.5);
+    cursor: pointer;
+    z-index: 2;
+  }
+
+  .agent:hover {
+    box-shadow: 0 0 18px rgba(255,255,255,0.6);
+  }
+
+  /* 对话气泡 */
+  .bubble {
+    position: absolute;
+    transform: translate(-50%, -120%);
+    background: rgba(255,255,255,0.95);
+    color: #222;
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 13px;
+    max-width: 220px;
+    line-height: 1.5;
+    pointer-events: none;
+    z-index: 3;
+    white-space: pre-wrap;
+    word-break: break-word;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+  }
+
+  .bubble::after {
+    content: "";
+    position: absolute;
+    bottom: -6px; left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-top: 7px solid rgba(255,255,255,0.95);
+  }
+
+  .bubble:empty { display: none; }
+
+  /* 底部信息 */
+  .info {
+    margin-top: 12px;
+    font-size: 13px; color: #888;
+  }
+  .info span { margin: 0 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>童话镇</h1>
+  <div class="map-wrapper" id="map"></div>
+  <div class="info">
+    距离: <span id="dist">-</span> px
+    | 状态: <span id="status">等待中</span>
+  </div>
+</div>
+
+<script>
+const MAP_W = 800, MAP_H = 600;
+
+const agentEls = {};
+
+function createAgentUI(data) {
+  const map = document.getElementById("map");
+  data.agents.forEach(a => {
+    let el = agentEls[a.name];
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "agent";
+      el.style.backgroundColor = a.color;
+      el.title = a.name;
+
+      const bubble = document.createElement("div");
+      bubble.className = "bubble";
+      el.appendChild(bubble);
+
+      // 点击角色：暂停移动 → 弹出输入框 → 发送消息
+      el.addEventListener("click", () => handleClickAgent(a.name));
+
+      map.appendChild(el);
+      agentEls[a.name] = { dot: el, bubble };
+    }
+
+    const ref = agentEls[a.name];
+    ref.dot.style.left = a.x + "px";
+    ref.dot.style.top  = a.y + "px";
+    ref.bubble.textContent = a.message || "";
+  });
+}
+
+// ── 用户点击角色交互 ──────────────────────────────
+
+let timerId = null;
+let interacting = false;  // 防止重复点击
+
+async function handleClickAgent(agentName) {
+  if (interacting) return;
+  interacting = true;
+
+  // 暂停自动推进
+  if (timerId) clearInterval(timerId);
+  document.getElementById("status").textContent = "交互中...";
+
+  const msg = prompt("你想对 " + agentName + " 说什么？");
+  if (msg && msg.trim()) {
+    try {
+      const res = await fetch("/api/interact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: agentName, message: msg.trim() }),
+      });
+      const data = await res.json();
+
+      // 立即更新该角色的对话气泡
+      if (agentEls[agentName]) {
+        agentEls[agentName].bubble.textContent = data.content || "";
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  // 恢复自动推进
+  document.getElementById("status").textContent = "移动中";
+  timerId = setInterval(tick, 3000);
+  interacting = false;
+}
+
+// ── 定时推进 ──────────────────────────────────────
+
+async function tick() {
+  document.getElementById("status").textContent = "推进中...";
+  try {
+    const stepRes = await fetch("/api/step", { method: "POST" });
+    const stepData = await stepRes.json();
+
+    const stateRes = await fetch("/api/state");
+    const stateData = await stateRes.json();
+
+    createAgentUI(stateData);
+
+    document.getElementById("dist").textContent = stepData.distance;
+    document.getElementById("status").textContent = stepData.interaction ? "互动中!" : "移动中";
+  } catch (e) {
+    document.getElementById("status").textContent = "连接错误";
+    console.error(e);
+  }
+}
+
+// 首次加载状态，然后每 3 秒推进
+fetch("/api/state").then(r => r.json()).then(createAgentUI);
+timerId = setInterval(tick, 3000);
+</script>
+</body>
+</html>
