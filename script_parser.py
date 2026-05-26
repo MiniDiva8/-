@@ -8,6 +8,7 @@ import json
 import os
 from typing import List, Tuple
 
+import httpx
 from openai import OpenAI
 from pydantic import BaseModel, Field
 
@@ -64,7 +65,11 @@ def parse_script(
     if not api_key:
         raise RuntimeError("请设置 DEEPSEEK_API_KEY 或 OPENAI_API_KEY 环境变量")
 
-    client = OpenAI(api_key=api_key, base_url=base_url)
+    client = OpenAI(
+        api_key=api_key,
+        base_url=base_url,
+        http_client=httpx.Client(proxy=None, trust_env=False),  # 绕过系统代理
+    )
 
     system_prompt = (
         "你是一个童话世界剧本解析器。从用户提供的文本中提取所有角色和场景。\n"
