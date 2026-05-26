@@ -1,0 +1,21 @@
+{
+  "characters": [
+    {
+      "name": "小红帽",
+      "personality": "开朗善良，但有些粗心大意",
+      "initial_motivation": "去看望奶奶"
+    },
+    {
+      "name": "大灰狼",
+      "personality": "狡猾又充满耐心",
+      "initial_motivation": "骗走小红帽的浆果作为开胃菜"
+    }
+  ],
+  "scenes": [
+    {
+      "location_name": "童话镇中心广场",
+      "description": "阳光明媚的清晨，广场边缘有灌木丛",
+      "current_time": "清晨"
+    }
+  ]
+}
