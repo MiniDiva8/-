@@ -3,16 +3,60 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 
-# 环境
+# 环境 & 密钥
 .env
 .venv/
 venv/
+*.key
+*_key
+*secret*
 
 # 系统
 .DS_Store
 Thumbs.db
 desktop.ini
 
-# 临时文件
+# 临时 / 运行时输出
 *.tmp
 *.log
+parse_output.txt
+parse_result.json
+agent_result.json
+
+# 个人目录（仓库建在 home 目录下，需全局忽略）
+.ai_completion/
+.anaconda/
+.cache/
+.cc-switch/
+.claude/
+.claude.json
+.conda/
+.condarc
+.config/
+.continuum/
+.gitconfig
+.heyboxacc.conf
+.leigod/
+.matplotlib/
+.npmrc
+.ollama/
+.python_history
+.ssh/
+.trae-cn/
+.vscode/
+AppData/
+Desktop/
+Dev-Cpp/
+Documents/
+Downloads/
+Links/
+Music/
+NTUSER.DAT*
+ntuser.dat*
+ntuser.ini
+OneDrive/
+Pictures/
+PyCharmMiscProject/
+Searches/
+Videos/
+mingw64/
