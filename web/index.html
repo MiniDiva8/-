@@ -94,6 +94,18 @@
     opacity: 1;
   }
 
+  /* ── 选中状态 ──────────────────────────────── */
+
+  .agent.selected .agent-avatar {
+    filter: drop-shadow(0 0 8px gold) drop-shadow(0 0 18px gold) drop-shadow(3px 5px 6px rgba(0,0,0,0.5));
+    animation: agent-float 3s ease-in-out infinite, pulse-glow 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { filter: drop-shadow(0 0 8px gold) drop-shadow(0 0 18px gold) drop-shadow(3px 5px 6px rgba(0,0,0,0.5)); }
+    50%      { filter: drop-shadow(0 0 14px gold) drop-shadow(0 0 28px gold) drop-shadow(3px 5px 6px rgba(0,0,0,0.5)); }
+  }
+
   /* ── 对话气泡 ──────────────────────────────── */
 
   .bubble {
@@ -297,6 +309,19 @@ const DEFAULT_EMOJI = "🤖";
 
 const agentEls = {};
 
+var selectedAgent = null;  // 当前选中的角色名（null 表示无选中）
+
+function selectAgent(name) {
+  if (selectedAgent && agentEls[selectedAgent]) {
+    agentEls[selectedAgent].dot.classList.remove("selected");
+  }
+  selectedAgent = name;
+  if (name && agentEls[name]) {
+    agentEls[name].dot.classList.add("selected");
+    document.getElementById("status").textContent = name + " 手动控制中";
+  }
+}
+
 // ── 气泡更新（带淡入淡出）──────────────────────
 
 function updateBubble(bubbleEl, newText) {
@@ -367,7 +392,7 @@ function createAgentUI(data) {
       bubble.className = "bubble";
       el.appendChild(bubble);
 
-      el.addEventListener("click", function() { handleClickAgent(a.name); });
+      el.addEventListener("click", function(e) { e.stopPropagation(); handleClickAgent(a.name); });
       map.appendChild(el);
 
       ref = { dot: el, bubble: bubble };
@@ -377,6 +402,13 @@ function createAgentUI(data) {
     ref.dot.style.left = a.x + "px";
     ref.dot.style.top  = a.y + "px";
     updateBubble(ref.bubble, a.message || "");
+
+    // 同步选中状态
+    if (a.mode === "manual" && selectedAgent !== a.name) {
+      selectAgent(a.name);
+    } else if (a.mode === "autonomous" && selectedAgent === a.name) {
+      selectAgent(null);
+    }
   });
 }
 
@@ -387,10 +419,36 @@ var interacting = false;
 
 async function handleClickAgent(agentName) {
   if (interacting) return;
-  interacting = true;
 
+  // 小红帽：manual 模式 → 切回 autonomous（不聊天）
+  if (agentName === "小红帽" && selectedAgent === "小红帽") {
+    try {
+      await fetch("/api/mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "小红帽", mode: "autonomous" }),
+      });
+    } catch (e) { console.error(e); }
+    selectAgent(null);
+    document.getElementById("status").textContent = "移动中";
+    return;
+  }
+
+  interacting = true;
   if (timerId) clearInterval(timerId);
   document.getElementById("status").textContent = "交互中...";
+
+  // 打开聊天前，取消小红帽选中
+  if (selectedAgent === "小红帽" && agentName !== "小红帽") {
+    try {
+      await fetch("/api/mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "小红帽", mode: "autonomous" }),
+      });
+    } catch (e) { console.error(e); }
+    selectAgent(null);
+  }
 
   var msg = prompt("你想对 " + agentName + " 说什么？");
   if (msg && msg.trim()) {
@@ -410,9 +468,35 @@ async function handleClickAgent(agentName) {
     }
   }
 
-  document.getElementById("status").textContent = "移动中";
+  document.getElementById("status").textContent = selectedAgent ? selectedAgent + " 手动控制中" : "移动中";
   timerId = setInterval(tick, 3000);
   interacting = false;
+}
+
+// ── 地图点击寻路 ──────────────────────────────
+
+async function handleMapClick(e) {
+  // 不处理角色元素上的点击（由 agent click handler 处理）
+  if (e.target.closest(".agent")) return;
+
+  var map = document.getElementById("map");
+  var rect = map.getBoundingClientRect();
+  var x = e.clientX - rect.left;
+  var y = e.clientY - rect.top;
+
+  // clamp 到地图边界内
+  x = Math.max(15, Math.min(MAP_W - 15, Math.round(x)));
+  y = Math.max(15, Math.min(MAP_H - 15, Math.round(y)));
+
+  try {
+    await fetch("/api/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "小红帽", x: x, y: y }),
+    });
+  } catch (e) { console.error(e); }
+
+  selectAgent("小红帽");
 }
 
 // ── 定时推进 ────────────────────────────────────
@@ -439,6 +523,7 @@ async function tick() {
 // 初始化：先加载状态，再启动定时器
 fetch("/api/state").then(function(r) { return r.json(); }).then(createAgentUI);
 timerId = setInterval(tick, 3000);
+document.getElementById("map").addEventListener("click", handleMapClick);
 </script>
 </body>
 </html>

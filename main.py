@@ -20,6 +20,7 @@ from script_parser import Character
 MAP_W, MAP_H = 800, 600
 INTERACT_DIST = 100   # 触发交互的距离阈值（像素）
 MOVE_RANGE = 25       # 每步最大随机移动像素
+MANUAL_STEP = 65      # 手动模式每步移动像素
 
 # ── 游戏智能体封装 ──────────────────────────────────────
 
@@ -33,11 +34,30 @@ class GameAgent:
         self.x = x
         self.y = y
         self.latest_message = ""   # 当前对话气泡内容
+        self.mode = "autonomous"  # autonomous | manual
+        self.target_x = None
+        self.target_y = None
 
     def move_random(self) -> None:
         """在限定范围内随机移动一小步。"""
         self.x = max(15, min(MAP_W - 15, self.x + random.randint(-MOVE_RANGE, MOVE_RANGE)))
         self.y = max(15, min(MAP_H - 15, self.y + random.randint(-MOVE_RANGE, MOVE_RANGE)))
+
+    def move_toward_target(self) -> bool:
+        """向目标点移动一步，到达返回 True。"""
+        if self.target_x is None or self.target_y is None:
+            return True
+        dx = self.target_x - self.x
+        dy = self.target_y - self.y
+        dist = math.hypot(dx, dy)
+        if dist < 3:
+            self.x = self.target_x
+            self.y = self.target_y
+            return True
+        step = min(MANUAL_STEP, dist)
+        self.x += (dx / dist) * step
+        self.y += (dy / dist) * step
+        return False
 
     def to_dict(self) -> dict:
         return {
@@ -45,6 +65,7 @@ class GameAgent:
             "color": self.color,
             "x": round(self.x, 1),
             "y": round(self.y, 1),
+            "mode": self.mode,
             "message": self.latest_message,
         }
 
@@ -91,7 +112,10 @@ def step():
     """
     # 1. 移动
     for a in agents:
-        a.move_random()
+        if a.mode == "manual":
+            a.move_toward_target()
+        else:
+            a.move_random()
 
     a_hat, a_wolf = agents[0], agents[1]
     dist = math.hypot(a_hat.x - a_wolf.x, a_hat.y - a_wolf.y)
@@ -155,6 +179,43 @@ def interact(req: InteractRequest):
         "action_type": reaction["action_type"],
         "content": reaction["content"],
     }
+
+
+# ── 移动控制 ────────────────────────────────────────────
+
+class MoveRequest(BaseModel):
+    name: str
+    x: float
+    y: float
+
+
+@app.post("/api/move")
+def move_to(req: MoveRequest):
+    """设置角色目标点，切换为手动模式。"""
+    target = next((a for a in agents if a.name == req.name), None)
+    if not target:
+        return {"error": f"未找到角色: {req.name}"}
+    target.mode = "manual"
+    target.target_x = max(15, min(MAP_W - 15, req.x))
+    target.target_y = max(15, min(MAP_H - 15, req.y))
+    return {"ok": True}
+
+
+class ModeRequest(BaseModel):
+    name: str
+    mode: str
+
+
+@app.post("/api/mode")
+def set_mode(req: ModeRequest):
+    """切换角色控制模式。"""
+    target = next((a for a in agents if a.name == req.name), None)
+    if not target:
+        return {"error": f"未找到角色: {req.name}"}
+    target.mode = req.mode
+    target.target_x = None
+    target.target_y = None
+    return {"ok": True}
 
 
 # ── 前端入口 ────────────────────────────────────────────
