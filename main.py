@@ -20,7 +20,7 @@ from script_parser import Character
 MAP_W, MAP_H = 800, 600
 INTERACT_DIST = 100   # 触发交互的距离阈值（像素）
 MOVE_RANGE = 25       # 每步最大随机移动像素
-MANUAL_STEP = 65      # 手动模式每步移动像素
+MANUAL_STEP = 120     # 手动模式每步移动像素
 
 # ── 游戏智能体封装 ──────────────────────────────────────
 
