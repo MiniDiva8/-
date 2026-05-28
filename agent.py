@@ -9,8 +9,11 @@ from datetime import datetime
 from typing import Any, Dict, List
 
 import httpx
+from dotenv import load_dotenv
 from openai import OpenAI
 from pydantic import BaseModel
+
+load_dotenv()
 
 # 复用 script_parser 中的数据模型（不重复定义）
 from script_parser import Character

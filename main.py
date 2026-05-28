@@ -7,12 +7,17 @@
 import math
 import os
 import random
+import time
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
 from agent import Agent
+from pathfinding import (
+    CircleObstacle, RectObstacle, Obstacle,
+    find_path, is_position_blocked, obstacle_to_dict,
+)
 from script_parser import Character
 
 # ── 常量 ────────────────────────────────────────────────
@@ -20,7 +25,57 @@ from script_parser import Character
 MAP_W, MAP_H = 800, 600
 INTERACT_DIST = 100   # 触发交互的距离阈值（像素）
 MOVE_RANGE = 25       # 每步最大随机移动像素
-MANUAL_STEP = 120     # 手动模式每步移动像素
+MANUAL_STEP = 40      # 手动模式每步移动像素（配合 500ms tick，约 80px/s）
+INTERACT_COOLDOWN = 4.0  # 交互冷却时间（秒），防止 LLM 调用阻塞移动
+
+_last_interact_time = 0.0
+
+# ── 障碍物定义 ──────────────────────────────────────────
+
+obstacles: list[Obstacle] = [
+    # ── 左上角小树林 ──
+    CircleObstacle("tree", 70, 60, 38),
+    CircleObstacle("tree", 140, 45, 32),
+    CircleObstacle("tree", 55, 120, 35),
+    CircleObstacle("tree", 130, 110, 40),
+    CircleObstacle("tree", 180, 80, 30),
+
+    # ── 右上角小树林 ──
+    CircleObstacle("tree", 680, 55, 35),
+    CircleObstacle("tree", 740, 70, 38),
+    CircleObstacle("tree", 660, 130, 32),
+    CircleObstacle("tree", 720, 120, 40),
+
+    # ── 右下角小树林 ──
+    CircleObstacle("tree", 690, 510, 36),
+    CircleObstacle("tree", 750, 530, 34),
+    CircleObstacle("tree", 700, 560, 38),
+    CircleObstacle("tree", 760, 555, 30),
+
+    # ── 中央林带（分隔上下区域）──
+    CircleObstacle("tree", 290, 205, 30),
+    CircleObstacle("tree", 360, 195, 35),
+    CircleObstacle("tree", 430, 210, 32),
+    CircleObstacle("tree", 500, 200, 34),
+
+    # ── 零散树木 ──
+    CircleObstacle("tree", 340, 380, 28),
+    CircleObstacle("tree", 620, 380, 32),
+    CircleObstacle("tree", 55, 520, 30),
+
+    # ── 石头 ──
+    CircleObstacle("rock", 230, 100, 14),
+    CircleObstacle("rock", 550, 320, 16),
+    CircleObstacle("rock", 400, 450, 13),
+    CircleObstacle("rock", 640, 240, 15),
+    CircleObstacle("rock", 170, 350, 12),
+    CircleObstacle("rock", 470, 510, 14),
+
+    # ── 房屋 ──
+    RectObstacle("house", 115, 435, 65, 55),   # 奶奶的小屋
+    RectObstacle("house", 515, 125, 60, 48),   # 伐木工小屋
+    RectObstacle("house", 580, 495, 65, 55),   # 村舍
+]
 
 # ── 游戏智能体封装 ──────────────────────────────────────
 
@@ -37,26 +92,59 @@ class GameAgent:
         self.mode = "autonomous"  # autonomous | manual
         self.target_x = None
         self.target_y = None
+        self.path: list = []                    # 缓存的路径点
+        self._last_target: tuple | None = None  # 上次计算路径时的目标
 
     def move_random(self) -> None:
-        """在限定范围内随机移动一小步。"""
-        self.x = max(15, min(MAP_W - 15, self.x + random.randint(-MOVE_RANGE, MOVE_RANGE)))
-        self.y = max(15, min(MAP_H - 15, self.y + random.randint(-MOVE_RANGE, MOVE_RANGE)))
+        """随机移动，避开障碍物。尝试 10 个随机方向，取第一个不碰撞的。"""
+        for _ in range(10):
+            nx = max(15, min(MAP_W - 15,
+                       self.x + random.randint(-MOVE_RANGE, MOVE_RANGE)))
+            ny = max(15, min(MAP_H - 15,
+                       self.y + random.randint(-MOVE_RANGE, MOVE_RANGE)))
+            if not is_position_blocked(nx, ny, obstacles):
+                self.x = nx
+                self.y = ny
+                return
 
     def move_toward_target(self) -> bool:
-        """向目标点移动一步，到达返回 True。"""
+        """沿 A* 路径向目标移动一步，到达返回 True。"""
         if self.target_x is None or self.target_y is None:
             return True
-        dx = self.target_x - self.x
-        dy = self.target_y - self.y
-        dist = math.hypot(dx, dy)
-        if dist < 3:
-            self.x = self.target_x
-            self.y = self.target_y
-            return True
-        step = min(MANUAL_STEP, dist)
-        self.x += (dx / dist) * step
-        self.y += (dy / dist) * step
+
+        target = (self.target_x, self.target_y)
+
+        # 目标改变或路径过期 → 重新计算
+        if self._last_target != target or not self.path:
+            self._last_target = target
+            self.path = find_path(obstacles, (self.x, self.y), target) or []
+
+        if not self.path:
+            return True  # 无路可走，放弃
+
+        # 沿路径前进
+        remaining = MANUAL_STEP
+        while remaining > 0 and self.path:
+            wp_x, wp_y = self.path[0]
+            dx = wp_x - self.x
+            dy = wp_y - self.y
+            dist = math.hypot(dx, dy)
+            if dist <= remaining:
+                self.x = wp_x
+                self.y = wp_y
+                remaining -= dist
+                self.path.pop(0)
+            else:
+                self.x += (dx / dist) * remaining
+                self.y += (dy / dist) * remaining
+                remaining = 0
+
+        # 检查是否到达最终目标
+        if not self.path:
+            if math.hypot(self.target_x - self.x, self.target_y - self.y) < 5:
+                self.x = self.target_x
+                self.y = self.target_y
+                return True
         return False
 
     def to_dict(self) -> dict:
@@ -99,6 +187,7 @@ def get_state():
     return {
         "map": {"width": MAP_W, "height": MAP_H},
         "agents": [a.to_dict() for a in agents],
+        "obstacles": [obstacle_to_dict(o) for o in obstacles],
     }
 
 
@@ -111,17 +200,43 @@ def step():
     返回距离和是否发生了交互。
     """
     # 1. 移动
+    a_hat, a_wolf = agents[0], agents[1]
+
     for a in agents:
         if a.mode == "manual":
             a.move_toward_target()
+        elif a.name == "大灰狼":
+            # 追逐小红帽
+            a.target_x = a_hat.x
+            a.target_y = a_hat.y
+            a.move_toward_target()
+        elif a.name == "小红帽":
+            # 逃离大灰狼
+            dx = a_hat.x - a_wolf.x
+            dy = a_hat.y - a_wolf.y
+            dist = math.hypot(dx, dy)
+            if dist < 200:
+                if dist > 1:
+                    evade_x = a_hat.x + (dx / dist) * 150
+                    evade_y = a_hat.y + (dy / dist) * 150
+                else:
+                    evade_x = a_hat.x + 150
+                    evade_y = a_hat.y
+                a.target_x = max(15, min(MAP_W - 15, evade_x))
+                a.target_y = max(15, min(MAP_H - 15, evade_y))
+                a.move_toward_target()
+            else:
+                a.move_random()
         else:
             a.move_random()
 
-    a_hat, a_wolf = agents[0], agents[1]
     dist = math.hypot(a_hat.x - a_wolf.x, a_hat.y - a_wolf.y)
 
-    # 2. 距离检测 & 交互
-    if dist < INTERACT_DIST:
+    # 2. 距离检测 & 交互（带冷却，防止 LLM 调用阻塞移动）
+    global _last_interact_time
+    now = time.time()
+    if dist < INTERACT_DIST and (now - _last_interact_time) >= INTERACT_COOLDOWN:
+        _last_interact_time = now
         # 大灰狼观察环境 → 行动
         wolf_obs = (
             f"你悄悄靠近了{a_hat.name}，她就在你面前不到几步远的地方。"

@@ -42,7 +42,7 @@
   .agent {
     position: absolute;
     transform: translate(-50%, -50%);
-    transition: left 1.2s linear, top 1.2s linear;
+    transition: left 0.55s linear, top 0.55s linear;
     z-index: 2;
     cursor: pointer;
     display: flex;
@@ -57,7 +57,7 @@
     font-size: 48px;
     line-height: 1;
     filter: drop-shadow(3px 5px 6px rgba(0,0,0,0.5));
-    animation: agent-float 3s ease-in-out infinite;
+    animation: agent-float 1.2s ease-in-out infinite;
     transition: transform 0.2s ease, filter 0.2s ease;
     user-select: none;
     pointer-events: none;
@@ -299,6 +299,132 @@ function drawBackground() {
 
 drawBackground();
 
+// ── 障碍物绘制 ───────────────────────────────────
+
+function drawTree(ctx, x, y, r) {
+  // 阴影
+  ctx.fillStyle = "rgba(0,0,0,0.15)";
+  ctx.beginPath();
+  ctx.ellipse(x + 3, y + 4, r * 0.7, r * 0.35, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 树干
+  ctx.fillStyle = "#8B6914";
+  ctx.beginPath();
+  ctx.ellipse(x, y + r * 0.3, r * 0.25, r * 0.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 三层树冠
+  var layers = [
+    { ox: 0, oy: -r * 0.15, rx: r * 0.65, ry: r * 0.55, color: "#2d6b1e" },
+    { ox: -r * 0.08, oy: -r * 0.35, rx: r * 0.7, ry: r * 0.5, color: "#3a7a28" },
+    { ox: 0, oy: -r * 0.55, rx: r * 0.6, ry: r * 0.45, color: "#4a8a35" },
+  ];
+  for (var i = 0; i < layers.length; i++) {
+    var l = layers[i];
+    ctx.fillStyle = l.color;
+    ctx.beginPath();
+    ctx.ellipse(x + l.ox, y + l.oy, l.rx, l.ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawRock(ctx, x, y, r) {
+  // 阴影
+  ctx.fillStyle = "rgba(0,0,0,0.15)";
+  ctx.beginPath();
+  ctx.ellipse(x + 2, y + 3, r * 0.8, r * 0.45, 0.1, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 石头主体（不规则椭圆 + 渐变）
+  var grad = ctx.createRadialGradient(x - r * 0.2, y - r * 0.3, r * 0.1, x, y, r);
+  grad.addColorStop(0, "#c8b898");
+  grad.addColorStop(0.6, "#9b8a70");
+  grad.addColorStop(1, "#6b5a48");
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.ellipse(x, y, r * 0.85, r * 0.7, 0.15, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 高光
+  ctx.fillStyle = "rgba(255,255,255,0.12)";
+  ctx.beginPath();
+  ctx.ellipse(x - r * 0.2, y - r * 0.25, r * 0.35, r * 0.2, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawHouse(ctx, x, y, w, h) {
+  // 阴影
+  ctx.fillStyle = "rgba(0,0,0,0.15)";
+  ctx.beginPath();
+  ctx.ellipse(x + w / 2, y + h + 3, w * 0.55, h * 0.12, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 墙壁
+  ctx.fillStyle = "#f5e6d3";
+  ctx.fillRect(x, y, w, h);
+
+  // 墙边线
+  ctx.strokeStyle = "rgba(139,90,43,0.4)";
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(x, y, w, h);
+
+  // 三角屋顶
+  var roofOverhang = 8;
+  ctx.fillStyle = "#8B4513";
+  ctx.beginPath();
+  ctx.moveTo(x - roofOverhang, y);
+  ctx.lineTo(x + w / 2, y - h * 0.6);
+  ctx.lineTo(x + w + roofOverhang, y);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = "#5a2d0c";
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // 门
+  var doorW = w * 0.28;
+  var doorH = h * 0.48;
+  ctx.fillStyle = "#6B3A2A";
+  ctx.fillRect(x + w / 2 - doorW / 2, y + h - doorH, doorW, doorH);
+  ctx.strokeStyle = "#4a2518";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + w / 2 - doorW / 2, y + h - doorH, doorW, doorH);
+
+  // 窗户
+  var winSize = w * 0.22;
+  ctx.fillStyle = "#87CEEB";
+  ctx.fillRect(x + w * 0.15, y + h * 0.15, winSize, winSize);
+  ctx.strokeStyle = "#4a3520";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + w * 0.15, y + h * 0.15, winSize, winSize);
+  // 窗框十字
+  ctx.beginPath();
+  ctx.moveTo(x + w * 0.15 + winSize / 2, y + h * 0.15);
+  ctx.lineTo(x + w * 0.15 + winSize / 2, y + h * 0.15 + winSize);
+  ctx.moveTo(x + w * 0.15, y + h * 0.15 + winSize / 2);
+  ctx.lineTo(x + w * 0.15 + winSize, y + h * 0.15 + winSize / 2);
+  ctx.stroke();
+}
+
+var obstaclesDrawn = false;
+
+function drawObstacles(obstacles) {
+  if (!obstacles || !obstacles.length) return;
+  var canvas = document.getElementById("bgCanvas");
+  var ctx = canvas.getContext("2d");
+  for (var i = 0; i < obstacles.length; i++) {
+    var o = obstacles[i];
+    if (o.type === "tree") {
+      drawTree(ctx, o.cx, o.cy, o.r);
+    } else if (o.type === "rock") {
+      drawRock(ctx, o.cx, o.cy, o.r);
+    } else if (o.type === "house") {
+      drawHouse(ctx, o.x, o.y, o.w, o.h);
+    }
+  }
+}
+
 // ── 角色 Emoji 映射 ─────────────────────────────
 
 const AGENT_EMOJI = {
@@ -435,7 +561,7 @@ async function handleClickAgent(agentName) {
   }
 
   interacting = true;
-  if (timerId) clearInterval(timerId);
+  if (timerId) clearTimeout(timerId);
   document.getElementById("status").textContent = "交互中...";
 
   // 打开聊天前，取消小红帽选中
@@ -469,7 +595,7 @@ async function handleClickAgent(agentName) {
   }
 
   document.getElementById("status").textContent = selectedAgent ? selectedAgent + " 手动控制中" : "移动中";
-  timerId = setInterval(tick, 3000);
+  scheduleTick();
   interacting = false;
 }
 
@@ -497,12 +623,12 @@ async function handleMapClick(e) {
   } catch (e) { console.error(e); }
 
   selectAgent("小红帽");
+  tick();
 }
 
 // ── 定时推进 ────────────────────────────────────
 
 async function tick() {
-  document.getElementById("status").textContent = "推进中...";
   try {
     var stepRes = await fetch("/api/step", { method: "POST" });
     var stepData = await stepRes.json();
@@ -511,6 +637,10 @@ async function tick() {
     var stateData = await stateRes.json();
 
     createAgentUI(stateData);
+    if (!obstaclesDrawn) {
+      drawObstacles(stateData.obstacles);
+      obstaclesDrawn = true;
+    }
 
     document.getElementById("dist").textContent = stepData.distance;
     document.getElementById("status").textContent = stepData.interaction ? "互动中!" : "移动中";
@@ -520,9 +650,25 @@ async function tick() {
   }
 }
 
+function scheduleTick() {
+  if (timerId) clearTimeout(timerId);
+  timerId = setTimeout(async function loop() {
+    await tick();
+    if (!interacting) {
+      timerId = setTimeout(loop, 500);
+    }
+  }, 0);
+}
+
 // 初始化：先加载状态，再启动定时器
-fetch("/api/state").then(function(r) { return r.json(); }).then(createAgentUI);
-timerId = setInterval(tick, 3000);
+fetch("/api/state").then(function(r) { return r.json(); }).then(function(data) {
+  createAgentUI(data);
+  if (!obstaclesDrawn) {
+    drawObstacles(data.obstacles);
+    obstaclesDrawn = true;
+  }
+});
+scheduleTick();
 document.getElementById("map").addEventListener("click", handleMapClick);
 </script>
 </body>
