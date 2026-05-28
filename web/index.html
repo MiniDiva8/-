@@ -110,19 +110,17 @@
 
   .bubble {
     position: absolute;
-    bottom: 100%;
-    left: 50%;
-    transform: translate(-50%, -10px);
     background: #fff;
     color: #222;
-    padding: 10px 16px;
-    border-radius: 16px;
+    padding: 10px 14px;
+    border-radius: 14px;
     font-size: 13px;
-    max-width: 380px;
-    line-height: 1.6;
+    max-width: 280px;
+    max-height: 200px;
+    overflow-y: auto;
+    line-height: 1.55;
     white-space: pre-wrap;
     word-break: break-word;
-    pointer-events: none;
     z-index: 3;
     box-shadow: 0 4px 20px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.08);
     opacity: 0;
@@ -137,7 +135,8 @@
     opacity: 0;
   }
 
-  .bubble::after {
+  /* 箭头上方（气泡在角色上方，箭头向下） */
+  .bubble.arrow-down::after {
     content: "";
     position: absolute;
     top: 100%;
@@ -148,6 +147,20 @@
     border-right: 8px solid transparent;
     border-top: 9px solid #fff;
     filter: drop-shadow(0 2px 2px rgba(0,0,0,0.12));
+  }
+
+  /* 箭头下方（气泡在角色下方，箭头向上） */
+  .bubble.arrow-up::after {
+    content: "";
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-bottom: 9px solid #fff;
+    filter: drop-shadow(0 -2px 2px rgba(0,0,0,0.08));
   }
 
   /* ── 底部信息栏 ────────────────────────────── */
@@ -516,6 +529,7 @@ function createAgentUI(data) {
 
       var bubble = document.createElement("div");
       bubble.className = "bubble";
+      bubble.addEventListener("click", function(e) { e.stopPropagation(); });
       el.appendChild(bubble);
 
       el.addEventListener("click", function(e) { e.stopPropagation(); handleClickAgent(a.name); });
@@ -527,6 +541,34 @@ function createAgentUI(data) {
 
     ref.dot.style.left = a.x + "px";
     ref.dot.style.top  = a.y + "px";
+
+    // 动态定位气泡，防止溢出地图（阈值 = max-height + 安全边距）
+    var above = a.y > 220;
+    ref.bubble.classList.remove("arrow-up", "arrow-down");
+    ref.bubble.classList.add(above ? "arrow-down" : "arrow-up");
+    ref.bubble.style.top = "auto";
+    ref.bubble.style.bottom = "auto";
+    ref.bubble.style.left = "";
+    ref.bubble.style.right = "";
+    ref.bubble.style.transform = "";
+
+    if (above) {
+      ref.bubble.style.bottom = "calc(100% + 10px)";
+    } else {
+      ref.bubble.style.top = "calc(100% + 10px)";
+    }
+
+    if (a.x < 160) {
+      ref.bubble.style.left = "0";
+      ref.bubble.style.transform = "translateX(0)";
+    } else if (a.x > MAP_W - 160) {
+      ref.bubble.style.right = "0";
+      ref.bubble.style.transform = "translateX(0)";
+    } else {
+      ref.bubble.style.left = "50%";
+      ref.bubble.style.transform = "translateX(-50%)";
+    }
+
     updateBubble(ref.bubble, a.message || "");
 
     // 同步选中状态
