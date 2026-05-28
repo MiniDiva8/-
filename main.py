@@ -206,21 +206,28 @@ def step():
         if a.mode == "manual":
             a.move_toward_target()
         elif a.name == "大灰狼":
-            # 追逐小红帽
-            a.target_x = a_hat.x
-            a.target_y = a_hat.y
+            # 追逐小红帽，但保持 WOLF_APPROACH_DIST 距离
+            dx = a_wolf.x - a_hat.x
+            dy = a_wolf.y - a_hat.y
+            chase_dist = math.hypot(dx, dy)
+            if chase_dist < 1:
+                a.target_x = a_hat.x + 60
+                a.target_y = a_hat.y
+            else:
+                a.target_x = a_hat.x + (dx / chase_dist) * 60
+                a.target_y = a_hat.y + (dy / chase_dist) * 60
             a.move_toward_target()
         elif a.name == "小红帽":
             # 逃离大灰狼
             dx = a_hat.x - a_wolf.x
             dy = a_hat.y - a_wolf.y
-            dist = math.hypot(dx, dy)
-            if dist < 200:
-                if dist > 1:
-                    evade_x = a_hat.x + (dx / dist) * 150
-                    evade_y = a_hat.y + (dy / dist) * 150
+            flee_dist = math.hypot(dx, dy)
+            if flee_dist < 250:
+                if flee_dist > 1:
+                    evade_x = a_hat.x + (dx / flee_dist) * 180
+                    evade_y = a_hat.y + (dy / flee_dist) * 180
                 else:
-                    evade_x = a_hat.x + 150
+                    evade_x = a_hat.x + 180
                     evade_y = a_hat.y
                 a.target_x = max(15, min(MAP_W - 15, evade_x))
                 a.target_y = max(15, min(MAP_H - 15, evade_y))
@@ -230,7 +237,22 @@ def step():
         else:
             a.move_random()
 
-    dist = math.hypot(a_hat.x - a_wolf.x, a_hat.y - a_wolf.y)
+    # 防止重叠：强制推开
+    dx = a_hat.x - a_wolf.x
+    dy = a_hat.y - a_wolf.y
+    dist = math.hypot(dx, dy)
+    if dist < 30:
+        if dist > 0.1:
+            push = (30 - dist) / 2 + 1
+            nx = dx / dist * push
+            ny = dy / dist * push
+        else:
+            nx, ny = 15, 0
+        a_hat.x = max(15, min(MAP_W - 15, a_hat.x + nx))
+        a_hat.y = max(15, min(MAP_H - 15, a_hat.y + ny))
+        a_wolf.x = max(15, min(MAP_W - 15, a_wolf.x - nx))
+        a_wolf.y = max(15, min(MAP_H - 15, a_wolf.y - ny))
+        dist = math.hypot(a_hat.x - a_wolf.x, a_hat.y - a_wolf.y)
 
     # 2. 距离检测 & 交互（带冷却，防止 LLM 调用阻塞移动）
     global _last_interact_time
