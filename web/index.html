@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>童话镇 · Fairy Tale Town</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #1a1a2e;
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh;
+    font-family: "Microsoft YaHei", "苹方", sans-serif;
+    color: #eee;
+  }
+
+  .container { text-align: center; }
+
+  h1 {
+    font-size: 24px; margin-bottom: 10px;
+    letter-spacing: 4px; font-weight: 400;
+  }
+
+  .map-wrapper {
+    position: relative;
+    width: 800px; height: 600px;
+    border: 3px solid #5a4a3a;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 0 30px rgba(0,0,0,0.5), inset 0 0 20px rgba(0,0,0,0.2);
+  }
+
+  #bgCanvas {
+    position: absolute; inset: 0;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  /* ── 角色容器 ──────────────────────────────── */
+
+  .agent {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    transition: left 1.2s linear, top 1.2s linear;
+    z-index: 2;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ── 角色头像 ──────────────────────────────── */
+
+  .agent-avatar {
+    display: block;
+    font-size: 48px;
+    line-height: 1;
+    filter: drop-shadow(3px 5px 6px rgba(0,0,0,0.5));
+    animation: agent-float 3s ease-in-out infinite;
+    transition: transform 0.2s ease, filter 0.2s ease;
+    user-select: none;
+    pointer-events: none;
+  }
+
+  .agent:hover .agent-avatar {
+    filter: drop-shadow(0 0 12px rgba(255,255,255,0.7)) drop-shadow(3px 5px 6px rgba(0,0,0,0.5));
+    transform: scale(1.15);
+  }
+
+  @keyframes agent-float {
+    0%, 100% { transform: translateY(0); }
+    50%      { transform: translateY(-7px); }
+  }
+
+  /* ── 角色名牌 ──────────────────────────────── */
+
+  .agent-name {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: #fff;
+    text-shadow: 0 1px 3px rgba(0,0,0,0.9), 0 0 6px rgba(0,0,0,0.5);
+    margin-top: 2px;
+    white-space: nowrap;
+    letter-spacing: 1px;
+    opacity: 0.85;
+    transition: opacity 0.2s ease;
+    pointer-events: none;
+    user-select: none;
+  }
+
+  .agent:hover .agent-name {
+    opacity: 1;
+  }
+
+  /* ── 选中状态 ──────────────────────────────── */
+
+  .agent.selected .agent-avatar {
+    filter: drop-shadow(0 0 8px gold) drop-shadow(0 0 18px gold) drop-shadow(3px 5px 6px rgba(0,0,0,0.5));
+    animation: agent-float 3s ease-in-out infinite, pulse-glow 1.2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-glow {
+    0%, 100% { filter: drop-shadow(0 0 8px gold) drop-shadow(0 0 18px gold) drop-shadow(3px 5px 6px rgba(0,0,0,0.5)); }
+    50%      { filter: drop-shadow(0 0 14px gold) drop-shadow(0 0 28px gold) drop-shadow(3px 5px 6px rgba(0,0,0,0.5)); }
+  }
+
+  /* ── 对话气泡 ──────────────────────────────── */
+
+  .bubble {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translate(-50%, -10px);
+    background: #fff;
+    color: #222;
+    padding: 10px 16px;
+    border-radius: 16px;
+    font-size: 13px;
+    max-width: 380px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    pointer-events: none;
+    z-index: 3;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.18), 0 1px 3px rgba(0,0,0,0.08);
+    opacity: 0;
+    transition: opacity 0.4s ease;
+  }
+
+  .bubble.bubble-visible {
+    opacity: 1;
+  }
+
+  .bubble.bubble-fading {
+    opacity: 0;
+  }
+
+  .bubble::after {
+    content: "";
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0; height: 0;
+    border-left: 8px solid transparent;
+    border-right: 8px solid transparent;
+    border-top: 9px solid #fff;
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.12));
+  }
+
+  /* ── 底部信息栏 ────────────────────────────── */
+
+  .info {
+    margin-top: 12px;
+    font-size: 13px; color: #888;
+  }
+  .info span { margin: 0 10px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>童话镇</h1>
+  <div class="map-wrapper" id="map">
+    <canvas id="bgCanvas" width="800" height="600"></canvas>
+  </div>
+  <div class="info">
+    距离: <span id="dist">-</span> px
+    | 状态: <span id="status">等待中</span>
+  </div>
+</div>
+
+<script>
+const MAP_W = 800, MAP_H = 600;
+
+// ── 伪随机数生成器（固定种子）──────────────────
+
+function mulberry32(a) {
+  return function() {
+    a |= 0; a = a + 0x6D2B79F5 | 0;
+    var t = Math.imul(a ^ a >>> 15, 1 | a);
+    t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t;
+    return ((t ^ t >>> 14) >>> 0) / 4294967296;
+  };
+}
+
+// ── 绘制草地背景 ───────────────────────────────
+
+function drawBackground() {
+  const canvas = document.getElementById("bgCanvas");
+  const ctx = canvas.getContext("2d");
+  const rng = mulberry32(42);
+
+  // 1. 草地基色
+  const grassGrad = ctx.createLinearGradient(0, 0, 0, MAP_H);
+  grassGrad.addColorStop(0, "#7ab648");
+  grassGrad.addColorStop(0.5, "#5d9430");
+  grassGrad.addColorStop(1, "#4a7a28");
+  ctx.fillStyle = grassGrad;
+  ctx.fillRect(0, 0, MAP_W, MAP_H);
+
+  // 2. 深浅草地块（椭圆斑块）
+  for (let i = 0; i < 80; i++) {
+    const x = rng() * MAP_W;
+    const y = rng() * MAP_H;
+    const rx = 15 + rng() * 55;
+    const ry = 8 + rng() * 35;
+    const shade = 130 + rng() * 70;
+    const alpha = 0.12 + rng() * 0.28;
+    ctx.fillStyle = `rgba(${shade - 30},${shade},${shade - 65},${alpha})`;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, rng() * Math.PI, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 3. 蜿蜒小路
+  function drawPath(startX, startY, endX, endY, midOffX, midOffY) {
+    ctx.beginPath();
+    ctx.moveTo(startX, startY);
+    ctx.quadraticCurveTo(startX + midOffX, startY + midOffY, endX, endY);
+    // 边缘阴影（宽）
+    ctx.strokeStyle = "rgba(110,90,60,0.35)";
+    ctx.lineWidth = 30;
+    ctx.lineCap = "round";
+    ctx.stroke();
+    // 路面主体（中宽）
+    ctx.strokeStyle = "rgba(175,145,100,0.5)";
+    ctx.lineWidth = 18;
+    ctx.stroke();
+    // 路面中心（窄亮）
+    ctx.strokeStyle = "rgba(200,175,135,0.35)";
+    ctx.lineWidth = 6;
+    ctx.stroke();
+  }
+
+  drawPath(80, 620, 380, 320, 250, -200);
+  drawPath(380, 320, 700, 40, 200, -180);
+
+  // 横向小路
+  ctx.beginPath();
+  ctx.moveTo(0, 420);
+  ctx.quadraticCurveTo(300, 400, 600, 440);
+  ctx.quadraticCurveTo(750, 455, 820, 480);
+  ctx.strokeStyle = "rgba(165,135,90,0.4)";
+  ctx.lineWidth = 22;
+  ctx.lineCap = "round";
+  ctx.stroke();
+  ctx.strokeStyle = "rgba(190,160,115,0.3)";
+  ctx.lineWidth = 10;
+  ctx.stroke();
+
+  // 4. 花草装饰
+  const flowerColors = ["#fff8dc", "#ffe4e1", "#fffff0", "#f0e68c", "#ffab91", "#e8f5e9"];
+
+  // 小花朵（4 瓣花）
+  for (let i = 0; i < 35; i++) {
+    const fx = rng() * MAP_W;
+    const fy = rng() * MAP_H;
+    const fc = flowerColors[Math.floor(rng() * flowerColors.length)];
+    const size = 2 + rng() * 2.5;
+    ctx.fillStyle = fc;
+    for (let petal = 0; petal < 4; petal++) {
+      const angle = (petal / 4) * Math.PI * 2;
+      const px = fx + Math.cos(angle) * size;
+      const py = fy + Math.sin(angle) * size;
+      ctx.beginPath();
+      ctx.arc(px, py, size * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#fff9c4";
+    ctx.beginPath();
+    ctx.arc(fx, fy, size * 0.35, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 小草簇
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 100; i++) {
+    const gx = rng() * MAP_W;
+    const gy = rng() * MAP_H;
+    const gh = 4 + rng() * 9;
+    const sway = (rng() - 0.5) * 5;
+    ctx.strokeStyle = `rgba(${40 + Math.floor(rng() * 40)},${90 + Math.floor(rng() * 50)},${25 + Math.floor(rng() * 30)},0.5)`;
+    ctx.beginPath();
+    ctx.moveTo(gx, gy);
+    ctx.quadraticCurveTo(gx + sway, gy - gh / 2, gx + sway * 2, gy - gh);
+    ctx.stroke();
+  }
+
+  // 5. 暗角
+  const vignette = ctx.createRadialGradient(400, 300, 200, 400, 300, 560);
+  vignette.addColorStop(0, "rgba(0,0,0,0)");
+  vignette.addColorStop(0.5, "rgba(0,0,0,0)");
+  vignette.addColorStop(1, "rgba(0,0,0,0.4)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, MAP_W, MAP_H);
+}
+
+drawBackground();
+
+// ── 角色 Emoji 映射 ─────────────────────────────
+
+const AGENT_EMOJI = {
+  "小红帽": "👧",
+  "大灰狼": "🐺",
+};
+const DEFAULT_EMOJI = "🤖";
+
+const agentEls = {};
+
+var selectedAgent = null;  // 当前选中的角色名（null 表示无选中）
+
+function selectAgent(name) {
+  if (selectedAgent && agentEls[selectedAgent]) {
+    agentEls[selectedAgent].dot.classList.remove("selected");
+  }
+  selectedAgent = name;
+  if (name && agentEls[name]) {
+    agentEls[name].dot.classList.add("selected");
+    document.getElementById("status").textContent = name + " 手动控制中";
+  }
+}
+
+// ── 气泡更新（带淡入淡出）──────────────────────
+
+function updateBubble(bubbleEl, newText) {
+  const hasText = !!(newText && newText.trim());
+  const currentText = bubbleEl.textContent || "";
+
+  if (currentText === newText) return;
+
+  // 清理旧的 transitionend 监听器和定时器
+  if (bubbleEl._fadeHandler) {
+    bubbleEl.removeEventListener("transitionend", bubbleEl._fadeHandler);
+    bubbleEl._fadeHandler = null;
+  }
+  if (bubbleEl._fadeTimer) {
+    clearTimeout(bubbleEl._fadeTimer);
+    bubbleEl._fadeTimer = null;
+  }
+
+  if (hasText) {
+    bubbleEl.textContent = newText;
+    void bubbleEl.offsetWidth; // 强制回流
+    bubbleEl.classList.remove("bubble-fading");
+    bubbleEl.classList.add("bubble-visible");
+  } else if (bubbleEl.classList.contains("bubble-visible")) {
+    bubbleEl.classList.remove("bubble-visible");
+    bubbleEl.classList.add("bubble-fading");
+
+    const handler = function() {
+      bubbleEl.textContent = "";
+      bubbleEl.classList.remove("bubble-fading");
+      bubbleEl.removeEventListener("transitionend", handler);
+      bubbleEl._fadeHandler = null;
+    };
+    bubbleEl._fadeHandler = handler;
+    bubbleEl.addEventListener("transitionend", handler);
+
+    // Fallback：0.5s 后强制清理
+    bubbleEl._fadeTimer = setTimeout(function() {
+      if (bubbleEl.classList.contains("bubble-fading")) {
+        handler();
+      }
+    }, 500);
+  }
+}
+
+// ── 创建/更新角色 UI ───────────────────────────
+
+function createAgentUI(data) {
+  const map = document.getElementById("map");
+  data.agents.forEach(function(a) {
+    var ref = agentEls[a.name];
+    if (!ref) {
+      var el = document.createElement("div");
+      el.className = "agent";
+
+      var avatar = document.createElement("span");
+      avatar.className = "agent-avatar";
+      avatar.textContent = AGENT_EMOJI[a.name] || DEFAULT_EMOJI;
+      avatar.style.animationDelay = (Math.random() * 3).toFixed(2) + "s";
+      el.appendChild(avatar);
+
+      var nameTag = document.createElement("span");
+      nameTag.className = "agent-name";
+      nameTag.textContent = a.name;
+      el.appendChild(nameTag);
+
+      var bubble = document.createElement("div");
+      bubble.className = "bubble";
+      el.appendChild(bubble);
+
+      el.addEventListener("click", function(e) { e.stopPropagation(); handleClickAgent(a.name); });
+      map.appendChild(el);
+
+      ref = { dot: el, bubble: bubble };
+      agentEls[a.name] = ref;
+    }
+
+    ref.dot.style.left = a.x + "px";
+    ref.dot.style.top  = a.y + "px";
+    updateBubble(ref.bubble, a.message || "");
+
+    // 同步选中状态
+    if (a.mode === "manual" && selectedAgent !== a.name) {
+      selectAgent(a.name);
+    } else if (a.mode === "autonomous" && selectedAgent === a.name) {
+      selectAgent(null);
+    }
+  });
+}
+
+// ── 用户点击角色交互 ────────────────────────────
+
+var timerId = null;
+var interacting = false;
+
+async function handleClickAgent(agentName) {
+  if (interacting) return;
+
+  // 小红帽：manual 模式 → 切回 autonomous（不聊天）
+  if (agentName === "小红帽" && selectedAgent === "小红帽") {
+    try {
+      await fetch("/api/mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "小红帽", mode: "autonomous" }),
+      });
+    } catch (e) { console.error(e); }
+    selectAgent(null);
+    document.getElementById("status").textContent = "移动中";
+    return;
+  }
+
+  interacting = true;
+  if (timerId) clearInterval(timerId);
+  document.getElementById("status").textContent = "交互中...";
+
+  // 打开聊天前，取消小红帽选中
+  if (selectedAgent === "小红帽" && agentName !== "小红帽") {
+    try {
+      await fetch("/api/mode", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "小红帽", mode: "autonomous" }),
+      });
+    } catch (e) { console.error(e); }
+    selectAgent(null);
+  }
+
+  var msg = prompt("你想对 " + agentName + " 说什么？");
+  if (msg && msg.trim()) {
+    try {
+      var res = await fetch("/api/interact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: agentName, message: msg.trim() }),
+      });
+      var data = await res.json();
+
+      if (agentEls[agentName]) {
+        updateBubble(agentEls[agentName].bubble, data.content || "");
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  document.getElementById("status").textContent = selectedAgent ? selectedAgent + " 手动控制中" : "移动中";
+  timerId = setInterval(tick, 3000);
+  interacting = false;
+}
+
+// ── 地图点击寻路 ──────────────────────────────
+
+async function handleMapClick(e) {
+  // 不处理角色元素上的点击（由 agent click handler 处理）
+  if (e.target.closest(".agent")) return;
+
+  var map = document.getElementById("map");
+  var rect = map.getBoundingClientRect();
+  var x = e.clientX - rect.left;
+  var y = e.clientY - rect.top;
+
+  // clamp 到地图边界内
+  x = Math.max(15, Math.min(MAP_W - 15, Math.round(x)));
+  y = Math.max(15, Math.min(MAP_H - 15, Math.round(y)));
+
+  try {
+    await fetch("/api/move", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "小红帽", x: x, y: y }),
+    });
+  } catch (e) { console.error(e); }
+
+  selectAgent("小红帽");
+}
+
+// ── 定时推进 ────────────────────────────────────
+
+async function tick() {
+  document.getElementById("status").textContent = "推进中...";
+  try {
+    var stepRes = await fetch("/api/step", { method: "POST" });
+    var stepData = await stepRes.json();
+
+    var stateRes = await fetch("/api/state");
+    var stateData = await stateRes.json();
+
+    createAgentUI(stateData);
+
+    document.getElementById("dist").textContent = stepData.distance;
+    document.getElementById("status").textContent = stepData.interaction ? "互动中!" : "移动中";
+  } catch (e) {
+    document.getElementById("status").textContent = "连接错误";
+    console.error(e);
+  }
+}
+
+// 初始化：先加载状态，再启动定时器
+fetch("/api/state").then(function(r) { return r.json(); }).then(createAgentUI);
+timerId = setInterval(tick, 3000);
+document.getElementById("map").addEventListener("click", handleMapClick);
+</script>
+</body>
+</html>
