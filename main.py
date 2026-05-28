@@ -178,8 +178,15 @@ agents = [
 
 # ── 室内场景 ────────────────────────────────────────────
 
-GRANDMA_HOUSE = RectObstacle("house", 115, 435, 65, 55)
+GRANDMA_HOUSE = RectObstacle("house", 115, 435, 65, 55)   # 狼假扮的奶奶
+REAL_HOME = RectObstacle("house", 580, 495, 65, 55)       # 右下角真奶奶的家
 indoor_scene = False
+
+# ── 奶奶营救状态 ──────────────────────────────────────────
+
+grandma_saved = False   # 奶奶是否已被救出
+grandma_agents: list = []  # 救出的奶奶们（可能多个）
+
 
 grandma_character = Character(
     name="奶奶",
@@ -194,6 +201,13 @@ def _is_in_house(x: float, y: float) -> bool:
     door_x = GRANDMA_HOUSE.x + GRANDMA_HOUSE.w / 2
     door_y = GRANDMA_HOUSE.y + GRANDMA_HOUSE.h + 8
     return math.hypot(x - door_x, y - door_y) < 25
+
+
+def _is_near_real_home(x: float, y: float) -> bool:
+    """检测小红帽是否到达右下角真奶奶的家。"""
+    door_x = REAL_HOME.x + REAL_HOME.w / 2
+    door_y = REAL_HOME.y - 15
+    return math.hypot(x - door_x, y - door_y) < 35
 
 
 # ── FastAPI 应用 ────────────────────────────────────────
@@ -288,7 +302,7 @@ def leave_kidnapped():
 @app.post("/api/kidnapped/rps")
 def play_rps(req: RPSRequest):
     """猜拳游戏：小红帽 vs 狼。赢 3 局救奶奶。"""
-    global rps_wins, rps_losses, rps_draws, kidnapped_scene
+    global rps_wins, rps_losses, rps_draws, kidnapped_scene, grandma_saved, grandma_agents
     if not kidnapped_scene:
         return {"error": "不在关押场景"}
 
@@ -310,6 +324,13 @@ def play_rps(req: RPSRequest):
         if rps_wins >= RPS_NEEDED:
             msg = f"你出了{player}，我出了{wolf}...哼，输了！但是你已经赢了{RPS_NEEDED}局了！奶奶，你可以走了！...呜呜，好吧，说话算话！"
             kidnapped_scene = False
+            grandma_saved = True
+            real_grandma = GameAgent(
+                Character(name="真奶奶", personality="被大灰狼绑架后刚刚获救，身体虚弱但精神很好，非常感激小红帽", initial_motivation="回家"),
+                "#8B4513",
+                agents[0].x + 15, agents[0].y + 15,
+            )
+            grandma_agents = [real_grandma]
             rps_wins = rps_losses = rps_draws = 0
         else:
             msg = f"你出了{player}，我出了{wolf}...哼，你赢了！还差{RPS_NEEDED - rps_wins}局！再来！"
@@ -332,8 +353,16 @@ def play_rps(req: RPSRequest):
         "draws": rps_draws,
         "needed": RPS_NEEDED,
         "message": msg,
-        "saved": result == "win" and rps_wins >= RPS_NEEDED,
+        "saved": grandma_saved and rps_wins >= RPS_NEEDED and result == "win",
+        "grandma_saved": grandma_saved,
     }
+
+
+@app.get("/api/grandma/status")
+def grandma_status():
+    """返回奶奶营救状态和位置。"""
+    at_home = any(_is_near_real_home(g.x, g.y) for g in grandma_agents) if grandma_agents else False
+    return {"saved": grandma_saved, "count": len(grandma_agents), "at_home": at_home}
 
 
 @app.get("/api/state")
@@ -345,11 +374,15 @@ def get_state():
         scene = "kidnapped"
     else:
         scene = "outdoor"
+
+    all_agents = [a.to_dict() for a in agents] + [g.to_dict() for g in grandma_agents]
     return {
         "map": {"width": MAP_W, "height": MAP_H},
-        "agents": [a.to_dict() for a in agents],
+        "agents": all_agents,
         "obstacles": [obstacle_to_dict(o) for o in obstacles],
         "scene": scene,
+        "grandma_saved": grandma_saved,
+        "grandma_count": len(grandma_agents),
     }
 
 
@@ -365,7 +398,7 @@ def step():
     a_hat, a_wolf = agents[0], agents[1]
 
     # 室内场景：检测小红帽是否离开门口
-    global indoor_scene, kidnapped_scene
+    global indoor_scene, kidnapped_scene, grandma_saved
     if indoor_scene:
         if _is_in_house(a_hat.x, a_hat.y):
             return {"distance": 0, "interaction": False, "scene": "indoor"}
@@ -411,6 +444,21 @@ def step():
                 a.move_random()
         else:
             a.move_random()
+
+    # 移动救出的奶奶（跟随小红帽）
+    global grandma_agents, grandma_saved
+    for g in grandma_agents:
+        g.target_x = a_hat.x + 15
+        g.target_y = a_hat.y + 15
+        g.mode = "autonomous"
+        g.move_toward_target()
+
+        # 检测是否到达右下角真奶奶的家
+        if _is_near_real_home(g.x, g.y):
+            g.latest_message = "到家了！谢谢你，小红帽！我们终于摆脱了大灰狼，可以安心生活了！🎉🏠"
+            g.target_x = None
+            g.target_y = None
+            grandma_saved = False  # 标记已安全到家，不再跟随
 
     # 计算当前距离
     dx = a_hat.x - a_wolf.x

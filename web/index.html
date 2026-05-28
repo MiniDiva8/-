@@ -444,6 +444,35 @@
     background: linear-gradient(180deg, #e8d0b8 0%, #d0b898 100%);
   }
 
+  /* 回家成功提示 */
+  .home-success-banner {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: linear-gradient(135deg, #2d6b1e, #4a8a35);
+    color: #fff;
+    padding: 20px 36px;
+    border-radius: 20px;
+    font-size: 18px;
+    font-weight: 700;
+    text-align: center;
+    z-index: 200;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+    animation: home-arrive 0.5s ease-out;
+    line-height: 1.6;
+  }
+
+  .home-success-banner.active {
+    display: block;
+  }
+
+  @keyframes home-arrive {
+    from { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+    to   { transform: translate(-50%, -50%) scale(1);   opacity: 1; }
+  }
+
   /* ── 底部信息栏 ────────────────────────────── */
 
   .info {
@@ -511,9 +540,15 @@
         </div>
 
         <div class="indoor-actions">
+          <button class="indoor-btn indoor-btn-send" id="returnHomeBtn" style="background:#2d6b1e;display:none" onclick="returnHome()">🏠 带奶奶回家</button>
           <button class="indoor-btn indoor-btn-leave" id="kidnappedLeave">离开</button>
         </div>
       </div>
+    </div>
+
+    <!-- 回家成功提示 -->
+    <div class="home-success-banner" id="homeBanner">
+      🎉🏠 安全到家！<br>奶奶和小红帽终于摆脱了危险的大灰狼，幸福地生活在一起！
     </div>
   </div>
   <div class="info">
@@ -781,6 +816,7 @@ function drawObstacles(obstacles) {
 const AGENT_EMOJI = {
   "小红帽": "👧",
   "大灰狼": "🐺",
+  "真奶奶": "👵",
 };
 const DEFAULT_EMOJI = "🤖";
 
@@ -1078,6 +1114,8 @@ document.getElementById("indoorInput").addEventListener("keydown", function(e) {
 });
 
 // 修改 tick，处理进屋事件
+var lastGrandmaSaved = false;
+
 tick = async function() {
   try {
     var stepRes = await fetch("/api/step", { method: "POST" });
@@ -1101,7 +1139,7 @@ tick = async function() {
       return;
     }
 
-    if (stepData.scene === "indoor") {
+    if (stepData.scene === "indoor" || stepData.scene === "kidnapped") {
       return; // 已在室内，不更新户外
     }
 
@@ -1116,6 +1154,20 @@ tick = async function() {
 
     document.getElementById("dist").textContent = stepData.distance;
     document.getElementById("status").textContent = stepData.interaction ? "互动中!" : "移动中";
+
+    // 检测奶奶到家
+    var hasGrandma = stateData.grandma_count > 0;
+    if (hasGrandma && !lastGrandmaSaved) {
+      lastGrandmaSaved = true;
+    }
+    // 奶奶被标记为不在家了（已安全到家）
+    if (!stateData.grandma_saved && lastGrandmaSaved) {
+      lastGrandmaSaved = false;
+      document.getElementById("homeBanner").classList.add("active");
+      setTimeout(function() {
+        document.getElementById("homeBanner").classList.remove("active");
+      }, 5000);
+    }
   } catch (e) {
     document.getElementById("status").textContent = "连接错误";
     console.error(e);
@@ -1209,10 +1261,9 @@ async function playRPS(choice) {
     if (data.saved) {
       document.getElementById("rpsResult").textContent = "🎊🎊🎊 奶奶得救了！！🎊🎊🎊";
       document.getElementById("rpsResult").style.color = "#2d6b1e";
-      setTimeout(function() {
-        fetch("/api/kidnapped/leave", { method: "POST" }).catch(function(e) {});
-        hideKidnapped();
-      }, 3000);
+      document.getElementById("kidnappedBubble").textContent = "谢谢你小红帽！我们快回家吧！🏠";
+      // 显示「带奶奶回家」按钮
+      document.getElementById("returnHomeBtn").style.display = "";
     } else if (data.losses >= data.needed) {
       document.getElementById("rpsResult").textContent = "💀 游戏结束...奶奶无法被营救了";
       document.getElementById("rpsResult").style.color = "#c0392b";
@@ -1227,6 +1278,22 @@ async function playRPS(choice) {
   }
 
   for (var i = 0; i < rpsBtn.length; i++) { rpsBtn[i].disabled = false; }
+}
+
+async function returnHome() {
+  try {
+    var res = await fetch("/api/grandma/return", { method: "GET" });
+    var data = await res.json();
+    if (data.home_x) {
+      await fetch("/api/move", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "小红帽", x: data.home_x, y: data.home_y }),
+      });
+    }
+    await fetch("/api/kidnapped/leave", { method: "POST" });
+    hideKidnapped();
+  } catch (e) { console.error(e); }
 }
 </script>
 </body>
