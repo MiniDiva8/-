@@ -72,8 +72,8 @@ obstacles: list[Obstacle] = [
     CircleObstacle("rock", 470, 510, 14),
 
     # ── 房屋 ──
-    RectObstacle("house", 115, 435, 65, 55),   # 奶奶的小屋
-    RectObstacle("house", 515, 125, 60, 48),   # 伐木工小屋
+    RectObstacle("house", 115, 435, 65, 55),   # 奶奶的小屋（狼假扮）
+    RectObstacle("house", 515, 125, 60, 48),   # 伐木工小屋（关押真奶奶）
     RectObstacle("house", 580, 495, 65, 55),   # 村舍
 ]
 
@@ -219,7 +219,24 @@ class ModeRequest(BaseModel):
     mode: str
 
 
-@app.get("/api/scene")
+class RPSRequest(BaseModel):
+    choice: str  # "rock" | "paper" | "scissors"
+
+
+# ── 关押真奶奶的房间 ─────────────────────────────────
+
+LUMBERJACK_HOUSE = RectObstacle("house", 515, 125, 60, 48)
+kidnapped_scene = False
+rps_wins = 0        # 玩家赢的局数
+rps_losses = 0      # 狼赢的局数
+rps_draws = 0        # 平局
+RPS_NEEDED = 3       # 需要赢 3 局才能救奶奶
+
+
+def _is_near_lumberjack_house(x: float, y: float) -> bool:
+    door_x = LUMBERJACK_HOUSE.x + LUMBERJACK_HOUSE.w / 2
+    door_y = LUMBERJACK_HOUSE.y + LUMBERJACK_HOUSE.h + 8
+    return math.hypot(x - door_x, y - door_y) < 25
 def get_scene():
     """返回当前场景类型。"""
     return {"scene": "indoor" if indoor_scene else "outdoor"}
@@ -253,14 +270,86 @@ def leave_house():
     return {"ok": True}
 
 
+@app.post("/api/kidnapped/leave")
+def leave_kidnapped():
+    """离开伐木工小屋，回到室外。"""
+    global kidnapped_scene
+    kidnapped_scene = False
+    a_hat = agents[0]
+    a_hat.x = LUMBERJACK_HOUSE.x + LUMBERJACK_HOUSE.w / 2
+    a_hat.y = LUMBERJACK_HOUSE.y + LUMBERJACK_HOUSE.h + 35
+    a_hat.mode = "autonomous"
+    a_hat.target_x = None
+    a_hat.target_y = None
+    a_hat.latest_message = ""
+    return {"ok": True}
+
+
+@app.post("/api/kidnapped/rps")
+def play_rps(req: RPSRequest):
+    """猜拳游戏：小红帽 vs 狼。赢 3 局救奶奶。"""
+    global rps_wins, rps_losses, rps_draws, kidnapped_scene
+    if not kidnapped_scene:
+        return {"error": "不在关押场景"}
+
+    choices = ["rock", "paper", "scissors"]
+    player = req.choice
+    if player not in choices:
+        return {"error": "无效选择"}
+
+    wolf = random.choice(choices)
+
+    # 判断输赢
+    if player == wolf:
+        rps_draws += 1
+        result = "draw"
+        msg = f"你出了{player}，我也出了{wolf}...平局！再来一次！"
+    elif (choices.index(player) - choices.index(wolf)) % 3 == 1:
+        rps_wins += 1
+        result = "win"
+        if rps_wins >= RPS_NEEDED:
+            msg = f"你出了{player}，我出了{wolf}...哼，输了！但是你已经赢了{RPS_NEEDED}局了！奶奶，你可以走了！...呜呜，好吧，说话算话！"
+            kidnapped_scene = False
+            rps_wins = rps_losses = rps_draws = 0
+        else:
+            msg = f"你出了{player}，我出了{wolf}...哼，你赢了！还差{RPS_NEEDED - rps_wins}局！再来！"
+    else:
+        rps_losses += 1
+        result = "lose"
+        if rps_losses >= RPS_NEEDED:
+            msg = f"你出了{player}，我出了{wolf}...哈哈，你输了{RPS_NEEDED}局！永远别想救出奶奶了！"
+            kidnapped_scene = False
+            rps_wins = rps_losses = rps_draws = 0
+        else:
+            msg = f"你出了{player}，我出了{wolf}...哈，你输了！还差{RPS_NEEDED - rps_losses}局我就赢了！"
+
+    return {
+        "result": result,
+        "player": player,
+        "wolf": wolf,
+        "wins": rps_wins,
+        "losses": rps_losses,
+        "draws": rps_draws,
+        "needed": RPS_NEEDED,
+        "message": msg,
+        "saved": result == "win" and rps_wins >= RPS_NEEDED,
+    }
+
+
 @app.get("/api/state")
 def get_state():
     """返回地图尺寸及所有智能体的名称、颜色、坐标、对话气泡。"""
+    if indoor_scene:
+        scene = "indoor"
+    elif kidnapped_scene:
+        scene = "kidnapped"
+    else:
+        scene = "outdoor"
     return {
         "map": {"width": MAP_W, "height": MAP_H},
         "agents": [a.to_dict() for a in agents],
         "obstacles": [obstacle_to_dict(o) for o in obstacles],
-        "scene": "indoor" if indoor_scene else "outdoor",
+        "scene": scene,
     }
 
 
@@ -276,12 +365,17 @@ def step():
     a_hat, a_wolf = agents[0], agents[1]
 
     # 室内场景：检测小红帽是否离开门口
-    global indoor_scene
+    global indoor_scene, kidnapped_scene
     if indoor_scene:
         if _is_in_house(a_hat.x, a_hat.y):
             return {"distance": 0, "interaction": False, "scene": "indoor"}
         else:
             indoor_scene = False
+    if kidnapped_scene:
+        if _is_near_lumberjack_house(a_hat.x, a_hat.y):
+            return {"distance": 0, "interaction": False, "scene": "kidnapped"}
+        else:
+            kidnapped_scene = False
 
     for a in agents:
         if a.mode == "manual":
@@ -323,7 +417,7 @@ def step():
     dy = a_hat.y - a_wolf.y
     dist = math.hypot(dx, dy)
 
-    # 室内场景检测：小红帽进入奶奶小屋
+    # 室内场景检测：小红帽进入奶奶小屋（狼假扮）
     if _is_in_house(a_hat.x, a_hat.y):
         if not indoor_scene:
             indoor_scene = True
@@ -338,6 +432,22 @@ def step():
     else:
         if indoor_scene:
             indoor_scene = False
+
+    # 关押场景检测：小红帽进入伐木工小屋（营救真奶奶）
+    if _is_near_lumberjack_house(a_hat.x, a_hat.y):
+        if not kidnapped_scene:
+            kidnapped_scene = True
+            a_hat.latest_message = ""
+            a_wolf.latest_message = ""
+            return {
+                "distance": round(dist, 1),
+                "interaction": False,
+                "scene": "kidnapped",
+                "greeting": "救命！谁...谁来了？呜呜...大灰狼把奶奶绑在这里了...你要救我吗？大灰狼说只要你和我玩猜拳赢了它，就放我走！",
+            }
+    else:
+        if kidnapped_scene:
+            kidnapped_scene = False
 
     # 防止重叠：强制推开
     if dist < 30:

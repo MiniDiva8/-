@@ -167,9 +167,9 @@
 
   .indoor-overlay {
     display: none;
-    position: absolute;
+    position: fixed;
     inset: 0;
-    z-index: 10;
+    z-index: 9999;
     background: radial-gradient(ellipse at center, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.7) 100%);
   }
 
@@ -181,12 +181,12 @@
 
   .indoor-room {
     width: 440px;
-    height: 340px;
+    height: 400px;
     background: linear-gradient(180deg, #f5e6d3 0%, #e8d5b8 40%, #c4956a 100%);
     border-radius: 20px;
     box-shadow: 0 0 60px rgba(0,0,0,0.5), inset 0 0 40px rgba(0,0,0,0.1);
     position: relative;
-    overflow: hidden;
+    overflow: visible;
     display: flex;
     flex-direction: column;
   }
@@ -205,12 +205,13 @@
 
   .indoor-room-header {
     text-align: center;
-    padding: 16px 0 4px;
-    font-size: 18px;
-    font-weight: 600;
-    color: #5a3a2a;
-    letter-spacing: 3px;
+    padding: 14px 0 6px;
+    font-size: 17px;
+    font-weight: 700;
+    color: #4a2a0a;
+    letter-spacing: 2px;
     z-index: 1;
+    background: rgba(139,90,43,0.1);
   }
 
   .indoor-room-scene {
@@ -352,6 +353,97 @@
     background: #d0c0b0;
   }
 
+  /* ── 猜拳游戏 ──────────────────────────────── */
+
+  .rps-area {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 20px 8px;
+    gap: 8px;
+  }
+
+  .rps-area.active {
+    display: flex;
+  }
+
+  .rps-title {
+    font-size: 16px;
+    font-weight: 700;
+    color: #5a3a2a;
+    letter-spacing: 1px;
+  }
+
+  .rps-score {
+    font-size: 12px;
+    color: #888;
+  }
+
+  .rps-result {
+    font-size: 14px;
+    color: #5a3a2a;
+    min-height: 20px;
+    font-weight: 600;
+  }
+
+  .rps-buttons {
+    display: flex;
+    gap: 14px;
+  }
+
+  .rps-btn {
+    width: 72px;
+    height: 72px;
+    border: 3px solid #c4956a;
+    border-radius: 16px;
+    background: linear-gradient(145deg, #fffdf7, #f0e6d5);
+    font-size: 28px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    line-height: 1.2;
+    transition: transform 0.15s, box-shadow 0.15s;
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+  }
+
+  .rps-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 14px rgba(0,0,0,0.2);
+  }
+
+  .rps-btn:active {
+    transform: scale(0.92);
+  }
+
+  .rps-btn span {
+    font-size: 10px;
+    color: #888;
+    margin-top: 2px;
+  }
+
+  .rps-wolf {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  /* 伐木工小屋（关押奶奶）样式 */
+  #kidnappedOverlay .indoor-room {
+    background: linear-gradient(180deg, #d5c8b0 0%, #b8a888 40%, #8a7458 100%);
+    border: 2px solid #6b5030;
+  }
+
+  #kidnappedOverlay .indoor-room-header {
+    color: #3a1a00;
+  }
+
+  #kidnappedOverlay .indoor-bed {
+    background: linear-gradient(180deg, #e8d0b8 0%, #d0b898 100%);
+  }
+
   /* ── 底部信息栏 ────────────────────────────── */
 
   .info {
@@ -384,6 +476,42 @@
           <input class="indoor-input" id="indoorInput" type="text" placeholder="对奶奶说话...">
           <button class="indoor-btn indoor-btn-send" id="indoorSend">发送</button>
           <button class="indoor-btn indoor-btn-leave" id="indoorLeave">离开</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 关押场景：营救真奶奶 -->
+    <div class="indoor-overlay" id="kidnappedOverlay">
+      <div class="indoor-room">
+        <div class="indoor-room-header">伐木工小屋 · 营救奶奶</div>
+        <div class="indoor-room-scene">
+          <div class="indoor-bed" style="width:110px;height:140px">
+            <span class="indoor-bed-emoji">👵</span>
+            <span class="indoor-bed-label">奶奶（被绑）</span>
+          </div>
+          <div class="indoor-chat">
+            <div class="indoor-bubble" id="kidnappedBubble" style="min-height:70px;font-size:13px"></div>
+          </div>
+        </div>
+
+        <!-- 猜拳游戏区 -->
+        <div class="rps-area" id="rpsArea">
+          <div class="rps-title">✊✋✌️ 猜拳大作战！赢 3 局救出奶奶 ✊✋✌️</div>
+          <div class="rps-score" id="rpsScore">战绩：胜 0 | 负 0 | 平 0（还需胜 3 局）</div>
+          <div class="rps-result" id="rpsResult"></div>
+          <div class="rps-buttons">
+            <button class="rps-btn" onclick="playRPS('rock')">✊<br>石头</button>
+            <button class="rps-btn" onclick="playRPS('paper')">✋<br>布</button>
+            <button class="rps-btn" onclick="playRPS('scissors')">✌️<br>剪刀</button>
+          </div>
+          <div class="rps-wolf">
+            <span id="wolfChoice" style="font-size:32px">❓</span>
+            <span id="wolfLabel" style="font-size:12px;color:#aaa">狼出的拳</span>
+          </div>
+        </div>
+
+        <div class="indoor-actions">
+          <button class="indoor-btn indoor-btn-leave" id="kidnappedLeave">离开</button>
         </div>
       </div>
     </div>
@@ -955,10 +1083,18 @@ tick = async function() {
     var stepRes = await fetch("/api/step", { method: "POST" });
     var stepData = await stepRes.json();
 
-    // 检测进入室内场景
+    // 检测进入关押场景
+    if (stepData.scene === "kidnapped") {
+      showKidnapped(stepData.greeting || document.getElementById("kidnappedBubble").textContent || "...");
+      var stateRes = await fetch("/api/state");
+      var stateData = await stateRes.json();
+      createAgentUI(stateData);
+      return;
+    }
+
+    // 检测进入室内场景（狼假扮奶奶）
     if (stepData.scene === "indoor" && stepData.greeting) {
       showIndoor(stepData.greeting);
-      // 更新位置状态（把小红帽藏在屋里）
       var stateRes = await fetch("/api/state");
       var stateData = await stateRes.json();
       createAgentUI(stateData);
@@ -993,13 +1129,105 @@ fetch("/api/state").then(function(r) { return r.json(); }).then(function(data) {
     drawObstacles(data.obstacles);
     obstaclesDrawn = true;
   }
-  // 如果服务器已在室内场景（刷新页面时），直接显示室内界面
+  // 恢复场景状态（刷新页面时）
   if (data.scene === "indoor") {
-    showIndoor("咳咳...谁啊？是小红帽吗？快进来吧，奶奶生病了躺在床上呢...");
+    showIndoor("咳咳...谁啊？是小红帽吗？快进来吧...");
+  } else if (data.scene === "kidnapped") {
+    showKidnapped("救命！谁...谁来了？呜呜...大灰狼把奶奶绑在这里了！");
   }
 });
 scheduleTick();
 document.getElementById("map").addEventListener("click", handleMapClick);
+
+// ── 猜拳游戏 ───────────────────────────────
+
+var currentRPS = null;
+
+function showKidnapped(greeting) {
+  document.getElementById("indoorOverlay").classList.remove("active");
+  document.getElementById("kidnappedOverlay").classList.add("active");
+  document.getElementById("rpsArea").classList.add("active");
+  document.getElementById("kidnappedBubble").textContent = greeting || "";
+  document.getElementById("rpsScore").textContent = "战绩：胜 0 | 负 0 | 平 0（还需胜 3 局）";
+  document.getElementById("rpsResult").textContent = "";
+  document.getElementById("wolfChoice").textContent = "❓";
+  document.getElementById("wolfLabel").textContent = "狼出的拳";
+  document.getElementById("status").textContent = "营救奶奶 · 猜拳中";
+  if (timerId) clearTimeout(timerId);
+}
+
+function hideKidnapped() {
+  document.getElementById("kidnappedOverlay").classList.remove("active");
+  document.getElementById("rpsArea").classList.remove("active");
+  document.getElementById("status").textContent = "移动中";
+  scheduleTick();
+}
+
+document.getElementById("kidnappedLeave").addEventListener("click", function() {
+  fetch("/api/kidnapped/leave", { method: "POST" }).catch(function(e) { console.error(e); });
+  hideKidnapped();
+});
+
+async function playRPS(choice) {
+  var rpsBtn = document.querySelectorAll(".rps-btn");
+  for (var i = 0; i < rpsBtn.length; i++) { rpsBtn[i].disabled = true; }
+
+  try {
+    var res = await fetch("/api/kidnapped/rps", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ choice: choice }),
+    });
+    var data = await res.json();
+
+    // 显示狼的出拳
+    var emoji = {"rock": "✊", "paper": "✋", "scissors": "✌️"};
+    document.getElementById("wolfChoice").textContent = emoji[data.wolf] || "❓";
+    document.getElementById("wolfLabel").textContent = "狼出了 " + emoji[data.wolf];
+
+    // 更新战绩
+    var score = "战绩：胜 " + data.wins + " | 负 " + data.losses + " | 平 " + data.draws;
+    if (data.result === "win") {
+      score += "（还需胜 " + data.needed + " 局）";
+      document.getElementById("rpsResult").textContent = "🎉 你赢了！";
+      document.getElementById("rpsResult").style.color = "#2d6b1e";
+    } else if (data.result === "lose") {
+      score += "（狼还差 " + data.needed + " 局赢）";
+      document.getElementById("rpsResult").textContent = "😢 你输了！";
+      document.getElementById("rpsResult").style.color = "#c0392b";
+    } else {
+      score += "（平局！再猜！）";
+      document.getElementById("rpsResult").textContent = "🤝 平局！再来一次！";
+      document.getElementById("rpsResult").style.color = "#888";
+    }
+    document.getElementById("rpsScore").textContent = score;
+
+    // 更新气泡
+    document.getElementById("kidnappedBubble").textContent = data.message;
+
+    // 如果游戏结束
+    if (data.saved) {
+      document.getElementById("rpsResult").textContent = "🎊🎊🎊 奶奶得救了！！🎊🎊🎊";
+      document.getElementById("rpsResult").style.color = "#2d6b1e";
+      setTimeout(function() {
+        fetch("/api/kidnapped/leave", { method: "POST" }).catch(function(e) {});
+        hideKidnapped();
+      }, 3000);
+    } else if (data.losses >= data.needed) {
+      document.getElementById("rpsResult").textContent = "💀 游戏结束...奶奶无法被营救了";
+      document.getElementById("rpsResult").style.color = "#c0392b";
+      setTimeout(function() {
+        fetch("/api/kidnapped/leave", { method: "POST" }).catch(function(e) {});
+        hideKidnapped();
+      }, 3000);
+    }
+  } catch (e) {
+    console.error(e);
+    document.getElementById("rpsResult").textContent = "连接失败";
+  }
+
+  for (var i = 0; i < rpsBtn.length; i++) { rpsBtn[i].disabled = false; }
+}
 </script>
 </body>
 </html>
