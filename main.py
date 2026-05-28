@@ -365,6 +365,34 @@ def grandma_status():
     return {"saved": grandma_saved, "count": len(grandma_agents), "at_home": at_home}
 
 
+@app.post("/api/reset")
+def reset_game():
+    """重置游戏状态，回到只有小红帽和大灰狼的初始状态。"""
+    global indoor_scene, kidnapped_scene, grandma_saved, grandma_agents, rps_wins, rps_losses, rps_draws
+    indoor_scene = False
+    kidnapped_scene = False
+    grandma_saved = False
+    grandma_agents = []
+    rps_wins = 0
+    rps_losses = 0
+    rps_draws = 0
+    # 重置小红帽位置
+    agents[0].x = random.uniform(100, 300)
+    agents[0].y = random.uniform(150, 450)
+    agents[0].mode = "autonomous"
+    agents[0].target_x = None
+    agents[0].target_y = None
+    agents[0].latest_message = ""
+    # 重置大灰狼位置
+    agents[1].x = random.uniform(500, 700)
+    agents[1].y = random.uniform(150, 450)
+    agents[1].mode = "autonomous"
+    agents[1].target_x = None
+    agents[1].target_y = None
+    agents[1].latest_message = ""
+    return {"ok": True}
+
+
 @app.get("/api/state")
 def get_state():
     """返回地图尺寸及所有智能体的名称、颜色、坐标、对话气泡。"""
@@ -375,7 +403,9 @@ def get_state():
     else:
         scene = "outdoor"
 
-    all_agents = [a.to_dict() for a in agents] + [g.to_dict() for g in grandma_agents]
+    all_agents = [a.to_dict() for a in agents]
+    if grandma_agents:
+        all_agents += [g.to_dict() for g in grandma_agents]
     return {
         "map": {"width": MAP_W, "height": MAP_H},
         "agents": all_agents,

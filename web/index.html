@@ -468,6 +468,26 @@
     display: block;
   }
 
+  .restart-btn {
+    display: none;
+    margin-top: 12px;
+    padding: 8px 20px;
+    background: rgba(255,255,255,0.2);
+    border: 2px solid rgba(255,255,255,0.5);
+    border-radius: 10px;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .restart-btn:hover {
+    background: rgba(255,255,255,0.3);
+  }
+  .restart-btn.show {
+    display: inline-block;
+  }
+
   @keyframes home-arrive {
     from { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
     to   { transform: translate(-50%, -50%) scale(1);   opacity: 1; }
@@ -548,7 +568,8 @@
 
     <!-- 回家成功提示 -->
     <div class="home-success-banner" id="homeBanner">
-      🎉🏠 安全到家！<br>奶奶和小红帽终于摆脱了危险的大灰狼，幸福地生活在一起！
+      🎉🏠 安全到家！<br>奶奶和小红帽终于摆脱了危险的大灰狼，幸福地生活在一起！<br>
+      <button class="restart-btn" id="restartBtn" onclick="restartGame()">重新开始游戏</button>
     </div>
   </div>
   <div class="info">
@@ -1164,9 +1185,11 @@ tick = async function() {
     if (!stateData.grandma_saved && lastGrandmaSaved) {
       lastGrandmaSaved = false;
       document.getElementById("homeBanner").classList.add("active");
+      document.getElementById("restartBtn").classList.add("show");
       setTimeout(function() {
         document.getElementById("homeBanner").classList.remove("active");
-      }, 5000);
+        document.getElementById("restartBtn").classList.remove("show");
+      }, 8000);
     }
   } catch (e) {
     document.getElementById("status").textContent = "连接错误";
@@ -1293,6 +1316,32 @@ async function returnHome() {
     }
     await fetch("/api/kidnapped/leave", { method: "POST" });
     hideKidnapped();
+  } catch (e) { console.error(e); }
+}
+
+// 清除地图上所有角色 DOM
+function clearAgentUI() {
+  var map = document.getElementById("map");
+  var agents = map.querySelectorAll(".agent");
+  agents.forEach(function(el) { el.remove(); });
+  for (var key in agentEls) { delete agentEls[key]; }
+}
+
+// 重新开始游戏
+async function restartGame() {
+  try {
+    await fetch("/api/reset", { method: "POST" });
+    document.getElementById("homeBanner").classList.remove("active");
+    document.getElementById("restartBtn").classList.remove("show");
+    lastGrandmaSaved = false;
+    clearAgentUI();
+    var res = await fetch("/api/state");
+    var data = await res.json();
+    createAgentUI(data);
+    if (!obstaclesDrawn) {
+      drawObstacles(data.obstacles);
+      obstaclesDrawn = true;
+    }
   } catch (e) { console.error(e); }
 }
 </script>
