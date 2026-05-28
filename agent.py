@@ -33,16 +33,16 @@ class Agent:
     def __init__(
         self,
         character: Character,
-        model: str = "deepseek-chat",
-        base_url: str = "https://api.deepseek.com",
+        model: str = "MiniMax-M2.7",
+        base_url: str = "https://api.minimax.chat/v1",
     ):
         self.character = character
         self.model = model
         self.memory: List[Dict[str, str]] = []  # 每条: {"role": "...", "content": "...", "time": "..."}
 
-        api_key = os.environ.get("DEEPSEEK_API_KEY") or os.environ.get("OPENAI_API_KEY")
+        api_key = os.environ.get("MINIMAX_API_KEY") or os.environ.get("DEEPSEEK_API_KEY")
         if not api_key:
-            raise RuntimeError("请设置 DEEPSEEK_API_KEY 或 OPENAI_API_KEY 环境变量")
+            raise RuntimeError("请设置 MINIMAX_API_KEY 环境变量")
         self._client = OpenAI(
             api_key=api_key,
             base_url=base_url,
@@ -106,14 +106,22 @@ class Agent:
             model=self.model,
             messages=[
                 {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"刚刚发生的事情：{observation}\n请决定你的反应。"},
+                {"role": "user", "content": f"刚刚发生的事情：{observation}\n请决定你的反应。输出格式：{{\"action_type\": \"speak\", \"content\": \"你说的内容\"}} 或 {{\"action_type\": \"think\", \"content\": \"你的内心想法\"}}。只输出JSON，不要其他文字。"},
             ],
-            response_format={"type": "json_object"},
             temperature=0.7,
+            extra_body={"thinking": {"type": "disabled"}},
         )
 
-        raw = response.choices[0].message.content
-        result = json.loads(raw)
+        try:
+            raw = response.choices[0].message.content or ""
+            # MiniMax M2.7 返回格式：<think>...<实际内容>
+            # 用 splitlines 取最后一段（实际回复）
+            lines = raw.splitlines()
+            if len(lines) > 1:
+                raw = lines[-1].strip()
+            result = json.loads(raw)
+        except (json.JSONDecodeError, AttributeError):
+            result = {"action_type": "think", "content": "（思考中...）"}
         action_type = result.get("action_type", "think")
         content = result.get("content", "")
 
