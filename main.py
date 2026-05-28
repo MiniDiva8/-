@@ -176,9 +176,81 @@ agents = [
     GameAgent(big_wolf, "dimgray", random.uniform(500, 700), random.uniform(150, 450)),
 ]
 
+# ── 室内场景 ────────────────────────────────────────────
+
+GRANDMA_HOUSE = RectObstacle("house", 115, 435, 65, 55)
+indoor_scene = False
+
+grandma_character = Character(
+    name="奶奶",
+    personality="表面上是慈祥的老奶奶，实际是大灰狼乔装假扮的。声音沙哑低沉，偶尔露出破绽（比如露出爪子、说漏嘴），但会立刻掩饰",
+    initial_motivation="假装生病卧床，骗小红帽放下篮子靠近床边，然后抓住机会吃掉她",
+)
+grandma_agent = Agent(grandma_character)
+
+
+def _is_in_house(x: float, y: float) -> bool:
+    """检测小红帽是否靠近奶奶小屋门口（南侧）。"""
+    door_x = GRANDMA_HOUSE.x + GRANDMA_HOUSE.w / 2
+    door_y = GRANDMA_HOUSE.y + GRANDMA_HOUSE.h + 8
+    return math.hypot(x - door_x, y - door_y) < 25
+
+
 # ── FastAPI 应用 ────────────────────────────────────────
 
 app = FastAPI(title="童话镇")
+
+
+# ── 请求模型 ────────────────────────────────────────────
+
+class InteractRequest(BaseModel):
+    name: str
+    message: str
+
+
+class MoveRequest(BaseModel):
+    name: str
+    x: float
+    y: float
+
+
+class ModeRequest(BaseModel):
+    name: str
+    mode: str
+
+
+@app.get("/api/scene")
+def get_scene():
+    """返回当前场景类型。"""
+    return {"scene": "indoor" if indoor_scene else "outdoor"}
+
+
+@app.post("/api/indoor/interact")
+def indoor_interact(req: InteractRequest):
+    """室内场景中与奶奶（假狼）对话。"""
+    if not indoor_scene:
+        return {"error": "不在室内"}
+    reaction = grandma_agent.perceive_and_act(req.message)
+    return {
+        "name": "奶奶",
+        "action_type": reaction["action_type"],
+        "content": reaction["content"],
+    }
+
+
+@app.post("/api/indoor/leave")
+def leave_house():
+    """离开小屋，回到室外。"""
+    global indoor_scene
+    indoor_scene = False
+    a_hat = agents[0]
+    a_hat.x = GRANDMA_HOUSE.x + GRANDMA_HOUSE.w / 2
+    a_hat.y = GRANDMA_HOUSE.y + GRANDMA_HOUSE.h + 35
+    a_hat.mode = "autonomous"
+    a_hat.target_x = None
+    a_hat.target_y = None
+    a_hat.latest_message = ""
+    return {"ok": True}
 
 
 @app.get("/api/state")
@@ -188,6 +260,7 @@ def get_state():
         "map": {"width": MAP_W, "height": MAP_H},
         "agents": [a.to_dict() for a in agents],
         "obstacles": [obstacle_to_dict(o) for o in obstacles],
+        "scene": "indoor" if indoor_scene else "outdoor",
     }
 
 
@@ -201,6 +274,14 @@ def step():
     """
     # 1. 移动
     a_hat, a_wolf = agents[0], agents[1]
+
+    # 室内场景：检测小红帽是否离开门口
+    global indoor_scene
+    if indoor_scene:
+        if _is_in_house(a_hat.x, a_hat.y):
+            return {"distance": 0, "interaction": False, "scene": "indoor"}
+        else:
+            indoor_scene = False
 
     for a in agents:
         if a.mode == "manual":
@@ -237,10 +318,28 @@ def step():
         else:
             a.move_random()
 
-    # 防止重叠：强制推开
+    # 计算当前距离
     dx = a_hat.x - a_wolf.x
     dy = a_hat.y - a_wolf.y
     dist = math.hypot(dx, dy)
+
+    # 室内场景检测：小红帽进入奶奶小屋
+    if _is_in_house(a_hat.x, a_hat.y):
+        if not indoor_scene:
+            indoor_scene = True
+            a_hat.latest_message = ""
+            a_wolf.latest_message = ""
+            return {
+                "distance": round(dist, 1),
+                "interaction": False,
+                "scene": "indoor",
+                "greeting": "咳咳...谁啊？是小红帽吗？快进来吧，奶奶生病了躺在床上呢...把门关上，走近一点让奶奶看看你...",
+            }
+    else:
+        if indoor_scene:
+            indoor_scene = False
+
+    # 防止重叠：强制推开
     if dist < 30:
         if dist > 0.1:
             push = (30 - dist) / 2 + 1
@@ -288,15 +387,10 @@ def step():
         a_hat.latest_message = ""
         a_wolf.latest_message = ""
 
-    return {"distance": round(dist, 1), "interaction": dist < INTERACT_DIST}
+    return {"distance": round(dist, 1), "interaction": dist < INTERACT_DIST, "scene": "outdoor"}
 
 
 # ── 用户交互 ────────────────────────────────────────────
-
-class InteractRequest(BaseModel):
-    name: str
-    message: str
-
 
 @app.post("/api/interact")
 def interact(req: InteractRequest):
@@ -320,12 +414,6 @@ def interact(req: InteractRequest):
 
 # ── 移动控制 ────────────────────────────────────────────
 
-class MoveRequest(BaseModel):
-    name: str
-    x: float
-    y: float
-
-
 @app.post("/api/move")
 def move_to(req: MoveRequest):
     """设置角色目标点，切换为手动模式。"""
@@ -336,11 +424,6 @@ def move_to(req: MoveRequest):
     target.target_x = max(15, min(MAP_W - 15, req.x))
     target.target_y = max(15, min(MAP_H - 15, req.y))
     return {"ok": True}
-
-
-class ModeRequest(BaseModel):
-    name: str
-    mode: str
 
 
 @app.post("/api/mode")

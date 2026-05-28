@@ -163,6 +163,195 @@
     filter: drop-shadow(0 -2px 2px rgba(0,0,0,0.08));
   }
 
+  /* ── 室内场景 ──────────────────────────────── */
+
+  .indoor-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.7) 100%);
+  }
+
+  .indoor-overlay.active {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .indoor-room {
+    width: 440px;
+    height: 340px;
+    background: linear-gradient(180deg, #f5e6d3 0%, #e8d5b8 40%, #c4956a 100%);
+    border-radius: 20px;
+    box-shadow: 0 0 60px rgba(0,0,0,0.5), inset 0 0 40px rgba(0,0,0,0.1);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 木地板纹理 */
+  .indoor-room::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-linear-gradient(0deg, transparent, transparent 28px, rgba(139,90,43,0.15) 28px, rgba(139,90,43,0.15) 29px),
+      repeating-linear-gradient(90deg, transparent, transparent 60px, rgba(139,90,43,0.08) 60px, rgba(139,90,43,0.08) 61px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .indoor-room-header {
+    text-align: center;
+    padding: 16px 0 4px;
+    font-size: 18px;
+    font-weight: 600;
+    color: #5a3a2a;
+    letter-spacing: 3px;
+    z-index: 1;
+  }
+
+  .indoor-room-scene {
+    flex: 1;
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    gap: 30px;
+    padding: 0 30px 20px;
+    z-index: 1;
+  }
+
+  /* 床 */
+  .indoor-bed {
+    position: relative;
+    width: 130px;
+    height: 160px;
+    background: linear-gradient(180deg, #faf0e6 0%, #e8d5c0 100%);
+    border-radius: 16px 16px 4px 4px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding-bottom: 8px;
+    flex-shrink: 0;
+  }
+
+  /* 床头板 */
+  .indoor-bed::before {
+    content: "";
+    position: absolute;
+    top: 0; left: -8px; right: -8px;
+    height: 50px;
+    background: linear-gradient(180deg, #8B6914, #6B4E0A);
+    border-radius: 12px 12px 0 0;
+  }
+
+  .indoor-bed-emoji {
+    font-size: 64px;
+    position: relative;
+    z-index: 1;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
+    animation: indoor-breathe 3s ease-in-out infinite;
+  }
+
+  @keyframes indoor-breathe {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.04); }
+  }
+
+  .indoor-bed-label {
+    font-size: 13px;
+    color: #5a3a2a;
+    font-weight: 600;
+    margin-top: 2px;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* 奶奶对话区 */
+  .indoor-chat {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 220px;
+  }
+
+  .indoor-bubble {
+    background: #fff;
+    padding: 10px 14px;
+    border-radius: 14px;
+    font-size: 13px;
+    color: #333;
+    line-height: 1.5;
+    min-height: 60px;
+    max-height: 130px;
+    overflow-y: auto;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+
+  /* 底部操作栏 */
+  .indoor-actions {
+    display: flex;
+    gap: 8px;
+    padding: 8px 20px 16px;
+    z-index: 1;
+  }
+
+  .indoor-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 2px solid #c4956a;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    outline: none;
+    background: #fffdf7;
+    color: #333;
+  }
+
+  .indoor-input:focus {
+    border-color: #8B6914;
+  }
+
+  .indoor-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 10px;
+    font-size: 14px;
+    font-family: inherit;
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.2s, transform 0.1s;
+  }
+
+  .indoor-btn:active {
+    transform: scale(0.96);
+  }
+
+  .indoor-btn-send {
+    background: #8B6914;
+    color: #fff;
+  }
+
+  .indoor-btn-send:hover {
+    background: #a07818;
+  }
+
+  .indoor-btn-leave {
+    background: #e0d0c0;
+    color: #5a3a2a;
+  }
+
+  .indoor-btn-leave:hover {
+    background: #d0c0b0;
+  }
+
   /* ── 底部信息栏 ────────────────────────────── */
 
   .info {
@@ -177,6 +366,27 @@
   <h1>童话镇</h1>
   <div class="map-wrapper" id="map">
     <canvas id="bgCanvas" width="800" height="600"></canvas>
+
+    <!-- 室内场景 -->
+    <div class="indoor-overlay" id="indoorOverlay">
+      <div class="indoor-room">
+        <div class="indoor-room-header">奶奶的小屋</div>
+        <div class="indoor-room-scene">
+          <div class="indoor-bed">
+            <span class="indoor-bed-emoji">👵</span>
+            <span class="indoor-bed-label">奶奶</span>
+          </div>
+          <div class="indoor-chat">
+            <div class="indoor-bubble" id="indoorBubble"></div>
+          </div>
+        </div>
+        <div class="indoor-actions">
+          <input class="indoor-input" id="indoorInput" type="text" placeholder="对奶奶说话...">
+          <button class="indoor-btn indoor-btn-send" id="indoorSend">发送</button>
+          <button class="indoor-btn indoor-btn-leave" id="indoorLeave">离开</button>
+        </div>
+      </div>
+    </div>
   </div>
   <div class="info">
     距离: <span id="dist">-</span> px
@@ -670,10 +880,94 @@ async function handleMapClick(e) {
 
 // ── 定时推进 ────────────────────────────────────
 
-async function tick() {
+function scheduleTick() {
+  if (timerId) clearTimeout(timerId);
+  timerId = setTimeout(async function loop() {
+    await tick();
+    if (!interacting) {
+      timerId = setTimeout(loop, 500);
+    }
+  }, 0);
+}
+
+// ── 室内场景控制 ────────────────────────────────
+
+var inIndoor = false;
+
+function showIndoor(greeting) {
+  inIndoor = true;
+  document.getElementById("indoorOverlay").classList.add("active");
+  document.getElementById("indoorBubble").textContent = greeting || "";
+  document.getElementById("indoorInput").value = "";
+  document.getElementById("status").textContent = "奶奶的小屋 · 对话中";
+  // 暂停户外 tick
+  if (timerId) clearTimeout(timerId);
+}
+
+function hideIndoor() {
+  inIndoor = false;
+  document.getElementById("indoorOverlay").classList.remove("active");
+  document.getElementById("status").textContent = "移动中";
+  // 恢复户外 tick
+  scheduleTick();
+}
+
+async function sendIndoorMessage() {
+  var input = document.getElementById("indoorInput");
+  var msg = input.value.trim();
+  if (!msg) return;
+  input.value = "";
+  input.disabled = true;
+  document.getElementById("indoorBubble").textContent = "......";
+
+  try {
+    var res = await fetch("/api/indoor/interact", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "奶奶", message: msg }),
+    });
+    var data = await res.json();
+    document.getElementById("indoorBubble").textContent = data.content || "";
+  } catch (e) {
+    console.error(e);
+    document.getElementById("indoorBubble").textContent = "（连接失败）";
+  }
+  input.disabled = false;
+  input.focus();
+}
+
+async function leaveIndoor() {
+  try {
+    await fetch("/api/indoor/leave", { method: "POST" });
+  } catch (e) { console.error(e); }
+  hideIndoor();
+}
+
+document.getElementById("indoorSend").addEventListener("click", sendIndoorMessage);
+document.getElementById("indoorLeave").addEventListener("click", leaveIndoor);
+document.getElementById("indoorInput").addEventListener("keydown", function(e) {
+  if (e.key === "Enter") sendIndoorMessage();
+});
+
+// 修改 tick，处理进屋事件
+tick = async function() {
   try {
     var stepRes = await fetch("/api/step", { method: "POST" });
     var stepData = await stepRes.json();
+
+    // 检测进入室内场景
+    if (stepData.scene === "indoor" && stepData.greeting) {
+      showIndoor(stepData.greeting);
+      // 更新位置状态（把小红帽藏在屋里）
+      var stateRes = await fetch("/api/state");
+      var stateData = await stateRes.json();
+      createAgentUI(stateData);
+      return;
+    }
+
+    if (stepData.scene === "indoor") {
+      return; // 已在室内，不更新户外
+    }
 
     var stateRes = await fetch("/api/state");
     var stateData = await stateRes.json();
@@ -690,17 +984,7 @@ async function tick() {
     document.getElementById("status").textContent = "连接错误";
     console.error(e);
   }
-}
-
-function scheduleTick() {
-  if (timerId) clearTimeout(timerId);
-  timerId = setTimeout(async function loop() {
-    await tick();
-    if (!interacting) {
-      timerId = setTimeout(loop, 500);
-    }
-  }, 0);
-}
+};
 
 // 初始化：先加载状态，再启动定时器
 fetch("/api/state").then(function(r) { return r.json(); }).then(function(data) {
@@ -708,6 +992,10 @@ fetch("/api/state").then(function(r) { return r.json(); }).then(function(data) {
   if (!obstaclesDrawn) {
     drawObstacles(data.obstacles);
     obstaclesDrawn = true;
+  }
+  // 如果服务器已在室内场景（刷新页面时），直接显示室内界面
+  if (data.scene === "indoor") {
+    showIndoor("咳咳...谁啊？是小红帽吗？快进来吧，奶奶生病了躺在床上呢...");
   }
 });
 scheduleTick();
